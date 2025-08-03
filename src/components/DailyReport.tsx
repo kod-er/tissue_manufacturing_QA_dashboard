@@ -85,8 +85,58 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
     selectedData = selectedData.filter(d => d.gsmGrade === selectedGSM);
   }
   
-  // If multiple records after filtering, show the first one
-  const displayData = selectedData[0] || data[0];
+  // If multiple records after filtering, aggregate the data
+  let displayData: QualityData;
+  
+  if (selectedData.length > 1) {
+    // Calculate averages for numeric fields
+    const numericFields = [
+      'gsm', 'gsmLcl', 'gsmUcl',
+      'thickness', 'thicknessLcl', 'thicknessUcl',
+      'bulk', 'bulkLcl', 'bulkUcl',
+      'tensileStrengthMD', 'tensileStrengthMDLcl', 'tensileStrengthMDUcl',
+      'tensileStrengthCD', 'tensileStrengthCDLcl', 'tensileStrengthCDUcl',
+      'mdCdRatio', 'brightness', 'brightnessLcl', 'brightnessUcl',
+      'moistureContent', 'moistureContentLcl', 'moistureContentUcl',
+      'opacity', 'opacityLcl', 'opacityUcl',
+      'stretchElongation', 'wetTensile', 'wetDryTensileRatio',
+      'grossMeanStrength', 'machineCreepPercent',
+      'machineSpeed', 'popeReelSpeed', 'mcDraw', 'nextPressLoad',
+      'coating', 'coating1', 'hwCy', 'hwSr', 'swCy', 'swOsr',
+      'shortFiberPercent', 'longFiberPercent', 'brokePercent',
+      'wsrKgHrs', 'dsrKgHrs'
+    ];
+    
+    // Create aggregated data object
+    displayData = {
+      ...selectedData[0],
+      shift: selectedShift === 'all' ? 'All Shifts' : selectedData[0].shift,
+      quality: selectedQuality === 'all' ? 'All Qualities' : selectedData[0].quality,
+      gsmGrade: selectedGSM === 'all' ? 'All GSM' : selectedData[0].gsmGrade,
+      time: 'Aggregated',
+      lotNo: 'Multiple',
+      rollNo: 'Multiple',
+      spoolNo: 'Multiple',
+    };
+    
+    // Calculate averages for numeric fields
+    numericFields.forEach(field => {
+      const values = selectedData
+        .map(d => d[field as keyof QualityData] as number)
+        .filter(v => v !== undefined && v !== null && !isNaN(v));
+      
+      if (values.length > 0) {
+        (displayData as any)[field] = values.reduce((sum, v) => sum + v, 0) / values.length;
+      }
+    });
+    
+    // Recalculate MD/CD ratio from averaged values
+    if (displayData.tensileStrengthMD && displayData.tensileStrengthCD) {
+      displayData.mdCdRatio = displayData.tensileStrengthMD / displayData.tensileStrengthCD;
+    }
+  } else {
+    displayData = selectedData[0] || data[0];
+  }
   
   if (!displayData) {
     return (
@@ -208,9 +258,14 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
         <Box sx={{ mb: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
           <Typography variant="body2">
             {dateData.length} records found for {dayjs(selectedDate).format('MMMM DD, YYYY')}. 
-            {selectedShift !== 'all' && ` Showing shift: ${selectedShift}.`}
-            {selectedQuality !== 'all' && ` Showing quality: ${selectedQuality}.`}
-            {selectedGSM !== 'all' && ` Showing GSM: ${selectedGSM}.`}
+            {selectedData.length > 1 && (
+              <>
+                <strong>Showing averaged values from {selectedData.length} records.</strong>
+              </>
+            )}
+            {selectedShift !== 'all' && ` Filtered by shift: ${selectedShift}.`}
+            {selectedQuality !== 'all' && ` Filtered by quality: ${selectedQuality}.`}
+            {selectedGSM !== 'all' && ` Filtered by GSM: ${selectedGSM}.`}
           </Typography>
         </Box>
       )}
@@ -221,13 +276,14 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
           <Typography variant="h6" gutterBottom>Production Details</Typography>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             {displayData.shift && <Chip label={`Shift: ${displayData.shift}`} />}
-            {displayData.lotNo && <Chip label={`Lot: ${displayData.lotNo}`} />}
-            {displayData.rollNo && <Chip label={`Roll: ${displayData.rollNo}`} />}
-            {displayData.spoolNo && <Chip label={`Spool: ${displayData.spoolNo}`} />}
+            {displayData.lotNo && displayData.lotNo !== 'Multiple' && <Chip label={`Lot: ${displayData.lotNo}`} />}
+            {displayData.rollNo && displayData.rollNo !== 'Multiple' && <Chip label={`Roll: ${displayData.rollNo}`} />}
+            {displayData.spoolNo && displayData.spoolNo !== 'Multiple' && <Chip label={`Spool: ${displayData.spoolNo}`} />}
             {displayData.labExecutive && <Chip label={`Lab: ${displayData.labExecutive}`} />}
             {displayData.quality && <Chip label={`Quality: ${displayData.quality}`} color="primary" />}
             {displayData.gsmGrade && <Chip label={`GSM: ${displayData.gsmGrade}`} color="secondary" />}
-            {displayData.time && <Chip label={`Time: ${displayData.time}`} variant="outlined" />}
+            {displayData.time && displayData.time !== 'Aggregated' && <Chip label={`Time: ${displayData.time}`} variant="outlined" />}
+            {displayData.time === 'Aggregated' && <Chip label="Aggregated Data" color="info" />}
           </Box>
         </Box>
       )}
