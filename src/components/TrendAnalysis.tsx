@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Paper, Typography, Box, ToggleButton, ToggleButtonGroup, IconButton, Tooltip as MuiTooltip, TextField, MenuItem } from '@mui/material';
+import { Paper, Typography, Box, ToggleButton, ToggleButtonGroup, IconButton, Tooltip as MuiTooltip, TextField, MenuItem, Switch, FormControlLabel } from '@mui/material';
 import { Download as DownloadIcon } from '@mui/icons-material';
 import {
   LineChart,
@@ -28,6 +28,8 @@ type ViewMode = 'daily' | 'weekly' | 'monthly';
 const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
   const [selectedMetric, setSelectedMetric] = useState('gsm');
+  const [secondMetric, setSecondMetric] = useState<string | null>(null);
+  const [compareMode, setCompareMode] = useState(false);
   const [shiftFilter, setShiftFilter] = useState<string>('all');
   const [qualityFilter, setQualityFilter] = useState<string>('all');
   const [gsmFilter, setGsmFilter] = useState<string>('all');
@@ -66,15 +68,25 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
 
   const aggregatedData = useMemo(() => {
     if (viewMode === 'daily') {
-      return filteredData.slice(0, 30).reverse().map(d => ({
-        date: dayjs(d.date).format('MM/DD'),
-        value: d[selectedMetric] as number,
-        lcl: d[`${selectedMetric}Lcl`] as number,
-        ucl: d[`${selectedMetric}Ucl`] as number,
-        shift: d.shift,
-        quality: d.quality,
-        gsmGrade: d.gsmGrade,
-      }));
+      return filteredData.slice(0, 30).reverse().map(d => {
+        const baseData: any = {
+          date: dayjs(d.date).format('MM/DD'),
+          value: d[selectedMetric] as number,
+          lcl: d[`${selectedMetric}Lcl`] as number,
+          ucl: d[`${selectedMetric}Ucl`] as number,
+          shift: d.shift,
+          quality: d.quality,
+          gsmGrade: d.gsmGrade,
+        };
+        
+        if (compareMode && secondMetric) {
+          baseData.value2 = d[secondMetric] as number;
+          baseData.lcl2 = d[`${secondMetric}Lcl`] as number;
+          baseData.ucl2 = d[`${secondMetric}Ucl`] as number;
+        }
+        
+        return baseData;
+      });
     }
 
     const grouped: { [key: string]: QualityData[] } = {};
@@ -99,18 +111,28 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
         const lcl = values[0][`${selectedMetric}Lcl`] as number;
         const ucl = values[0][`${selectedMetric}Ucl`] as number;
         
-        return {
+        const baseData: any = {
           date: viewMode === 'weekly' ? key : dayjs(key).format('MMM YYYY'),
           value: avgValue,
           lcl,
           ucl,
         };
+        
+        if (compareMode && secondMetric) {
+          const avgValue2 = values.reduce((sum, v) => sum + (v[secondMetric] as number), 0) / values.length;
+          baseData.value2 = avgValue2;
+          baseData.lcl2 = values[0][`${secondMetric}Lcl`] as number;
+          baseData.ucl2 = values[0][`${secondMetric}Ucl`] as number;
+        }
+        
+        return baseData;
       })
       .slice(0, viewMode === 'weekly' ? 12 : 6)
       .reverse();
-  }, [filteredData, viewMode, selectedMetric]);
+  }, [filteredData, viewMode, selectedMetric, compareMode, secondMetric]);
 
   const currentMetric = metrics.find(m => m.key === selectedMetric)!;
+  const secondMetricInfo = secondMetric ? metrics.find(m => m.key === secondMetric) : null;
 
   const handleDownloadChart = async () => {
     await downloadChartAsImage('trend-chart', `trend-analysis-${selectedMetric}-${viewMode}.png`);
@@ -207,18 +229,59 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
         </Box>
       )}
 
-      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 3 }}>
-        {metrics.map(metric => (
-          <ToggleButton
-            key={metric.key}
-            value={metric.key}
-            selected={selectedMetric === metric.key}
-            onChange={() => setSelectedMetric(metric.key)}
-            size="small"
-          >
-            {metric.label}
-          </ToggleButton>
-        ))}
+      <Box sx={{ mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <Typography variant="subtitle1">Primary Metric:</Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={compareMode}
+                onChange={(e) => {
+                  setCompareMode(e.target.checked);
+                  if (!e.target.checked) {
+                    setSecondMetric(null);
+                  }
+                }}
+              />
+            }
+            label="Compare Two Metrics"
+          />
+        </Box>
+        
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+          {metrics.map(metric => (
+            <ToggleButton
+              key={metric.key}
+              value={metric.key}
+              selected={selectedMetric === metric.key}
+              onChange={() => setSelectedMetric(metric.key)}
+              size="small"
+            >
+              {metric.label}
+            </ToggleButton>
+          ))}
+        </Box>
+        
+        {compareMode && (
+          <>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>Secondary Metric:</Typography>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              {metrics
+                .filter(m => m.key !== selectedMetric)
+                .map(metric => (
+                  <ToggleButton
+                    key={metric.key}
+                    value={metric.key}
+                    selected={secondMetric === metric.key}
+                    onChange={() => setSecondMetric(metric.key)}
+                    size="small"
+                  >
+                    {metric.label}
+                  </ToggleButton>
+                ))}
+            </Box>
+          </>
+        )}
       </Box>
 
       <Box sx={{ height: 400 }} id="trend-chart">
@@ -226,7 +289,18 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
           <LineChart data={aggregatedData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="date" />
-            <YAxis label={{ value: currentMetric.unit, angle: -90, position: 'insideLeft' }} />
+            <YAxis 
+              label={{ value: currentMetric.unit, angle: -90, position: 'insideLeft' }} 
+              stroke="#2196f3"
+            />
+            {compareMode && secondMetric && (
+              <YAxis 
+                yAxisId="right" 
+                orientation="right" 
+                label={{ value: secondMetricInfo?.unit || '', angle: 90, position: 'insideRight' }}
+                stroke="#ff5722"
+              />
+            )}
             <Tooltip 
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
@@ -235,12 +309,24 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
                     <Box sx={{ p: 1.5, bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
                       <Typography variant="body2" fontWeight="bold">{data.date}</Typography>
                       <Typography variant="body2" color="primary">
-                        {currentMetric.label}: {payload[0].value} {currentMetric.unit}
+                        {currentMetric.label}: {payload[0]?.value?.toFixed(2)} {currentMetric.unit}
                       </Typography>
                       {data.lcl && data.ucl && (
-                        <Typography variant="caption" color="text.secondary">
-                          Spec: {data.lcl} - {data.ucl}
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Spec: {data.lcl.toFixed(2)} - {data.ucl.toFixed(2)}
                         </Typography>
+                      )}
+                      {compareMode && secondMetric && payload[1] && (
+                        <>
+                          <Typography variant="body2" sx={{ color: '#ff5722', mt: 1 }}>
+                            {secondMetricInfo?.label}: {payload[1]?.value?.toFixed(2)} {secondMetricInfo?.unit}
+                          </Typography>
+                          {data.lcl2 && data.ucl2 && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              Spec: {data.lcl2.toFixed(2)} - {data.ucl2.toFixed(2)}
+                            </Typography>
+                          )}
+                        </>
                       )}
                       {viewMode === 'daily' && data.shift && (
                         <Typography variant="caption" display="block">
@@ -290,6 +376,17 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
               dot={{ fill: '#2196f3' }}
               name={currentMetric.label}
             />
+            {compareMode && secondMetric && (
+              <Line
+                type="monotone"
+                dataKey="value2"
+                stroke="#ff5722"
+                strokeWidth={2}
+                dot={{ fill: '#ff5722' }}
+                name={secondMetricInfo?.label || ''}
+                yAxisId="right"
+              />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </Box>
