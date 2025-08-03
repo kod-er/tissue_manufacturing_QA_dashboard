@@ -177,6 +177,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
               setSelectedDate(e.target.value);
               setSelectedShift('all');
               setSelectedQuality('all');
+              setSelectedGSM('all');
             }}
             sx={{ minWidth: 200 }}
             label="Select Date"
@@ -188,7 +189,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
             ))}
           </TextField>
           
-          {availableShifts.length > 1 && (
+          {availableShifts.length > 0 && (
             <TextField
               select
               size="small"
@@ -206,7 +207,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
             </TextField>
           )}
           
-          {availableQualities.length > 1 && (
+          {availableQualities.length > 0 && (
             <TextField
               select
               size="small"
@@ -224,7 +225,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
             </TextField>
           )}
           
-          {availableGSMs.length > 1 && (
+          {availableGSMs.length > 0 && (
             <TextField
               select
               size="small"

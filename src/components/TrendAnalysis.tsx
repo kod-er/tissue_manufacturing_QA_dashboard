@@ -43,6 +43,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
     { key: 'tensileStrengthMD', label: 'Tensile MD', unit: 'N/m' },
     { key: 'tensileStrengthCD', label: 'Tensile CD', unit: 'N/m' },
     { key: 'mdCdRatio', label: 'MD/CD Ratio', unit: '' },
+    { key: 'stretchElongation', label: 'Stretch/Elongation', unit: '%' },
     { key: 'bulk', label: 'Bulk', unit: 'cm³/g' },
     { key: 'brightness', label: 'Brightness', unit: '%' },
     { key: 'moistureContent', label: 'Moisture', unit: '%' },
