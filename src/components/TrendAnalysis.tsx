@@ -23,7 +23,7 @@ interface TrendAnalysisProps {
   data: QualityData[];
 }
 
-type ViewMode = 'daily' | 'weekly' | 'monthly';
+type ViewMode = 'hourly' | 'daily' | 'weekly' | 'monthly';
 
 const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
@@ -67,10 +67,11 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
   }, [data, shiftFilter, qualityFilter, gsmFilter]);
 
   const aggregatedData = useMemo(() => {
-    if (viewMode === 'daily') {
-      return filteredData.slice(0, 30).reverse().map(d => {
+    if (viewMode === 'hourly') {
+      // Show individual records with time
+      return filteredData.slice(0, 50).reverse().map(d => {
         const baseData: any = {
-          date: dayjs(d.date).format('MM/DD'),
+          date: d.time ? `${dayjs(d.date).format('MM/DD')} ${d.time}` : dayjs(d.date).format('MM/DD HH:mm'),
           value: d[selectedMetric] as number,
           lcl: d[`${selectedMetric}Lcl`] as number,
           ucl: d[`${selectedMetric}Ucl`] as number,
@@ -93,7 +94,9 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
     
     filteredData.forEach(d => {
       let key: string;
-      if (viewMode === 'weekly') {
+      if (viewMode === 'daily') {
+        key = d.date; // Group by date for daily aggregation
+      } else if (viewMode === 'weekly') {
         key = `${dayjs(d.date).year()}-W${dayjs(d.date).week()}`;
       } else {
         key = dayjs(d.date).format('YYYY-MM');
@@ -112,10 +115,13 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
         const ucl = values[0][`${selectedMetric}Ucl`] as number;
         
         const baseData: any = {
-          date: viewMode === 'weekly' ? key : dayjs(key).format('MMM YYYY'),
+          date: viewMode === 'daily' ? dayjs(key).format('MM/DD') : 
+                viewMode === 'weekly' ? key : 
+                dayjs(key).format('MMM YYYY'),
           value: avgValue,
           lcl,
           ucl,
+          recordCount: values.length,
         };
         
         if (compareMode && secondMetric) {
@@ -127,7 +133,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
         
         return baseData;
       })
-      .slice(0, viewMode === 'weekly' ? 12 : 6)
+      .slice(0, viewMode === 'daily' ? 30 : viewMode === 'weekly' ? 12 : 6)
       .reverse();
   }, [filteredData, viewMode, selectedMetric, compareMode, secondMetric]);
 
@@ -158,6 +164,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
           onChange={(_, value) => value && setViewMode(value)}
           size="small"
         >
+          <ToggleButton value="hourly">Hourly</ToggleButton>
           <ToggleButton value="daily">Daily</ToggleButton>
           <ToggleButton value="weekly">Weekly</ToggleButton>
           <ToggleButton value="monthly">Monthly</ToggleButton>
@@ -328,19 +335,24 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
                           )}
                         </>
                       )}
-                      {viewMode === 'daily' && data.shift && (
+                      {viewMode === 'hourly' && data.shift && (
                         <Typography variant="caption" display="block">
                           Shift: {data.shift}
                         </Typography>
                       )}
-                      {viewMode === 'daily' && data.quality && (
+                      {viewMode === 'hourly' && data.quality && (
                         <Typography variant="caption" display="block">
                           Quality: {data.quality}
                         </Typography>
                       )}
-                      {viewMode === 'daily' && data.gsmGrade && (
+                      {viewMode === 'hourly' && data.gsmGrade && (
                         <Typography variant="caption" display="block">
                           GSM: {data.gsmGrade}
+                        </Typography>
+                      )}
+                      {viewMode !== 'hourly' && data.recordCount > 1 && (
+                        <Typography variant="caption" display="block" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                          Averaged from {data.recordCount} records
                         </Typography>
                       )}
                     </Box>
