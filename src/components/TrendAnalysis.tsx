@@ -42,6 +42,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
     { key: 'thickness', label: 'Thickness', unit: 'mm' },
     { key: 'tensileStrengthMD', label: 'Tensile MD', unit: 'N/m' },
     { key: 'tensileStrengthCD', label: 'Tensile CD', unit: 'N/m' },
+    { key: 'mdCdRatio', label: 'MD/CD Ratio', unit: '' },
     { key: 'bulk', label: 'Bulk', unit: 'cm³/g' },
     { key: 'brightness', label: 'Brightness', unit: '%' },
     { key: 'moistureContent', label: 'Moisture', unit: '%' },
@@ -263,18 +264,22 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
             />
             <Legend />
             
-            <ReferenceLine
-              y={aggregatedData[0]?.lcl}
-              stroke="#ff9800"
-              strokeDasharray="3 3"
-              label="LCL"
-            />
-            <ReferenceLine
-              y={aggregatedData[0]?.ucl}
-              stroke="#ff9800"
-              strokeDasharray="3 3"
-              label="UCL"
-            />
+            {aggregatedData[0]?.lcl !== undefined && (
+              <ReferenceLine
+                y={aggregatedData[0]?.lcl}
+                stroke="#ff9800"
+                strokeDasharray="3 3"
+                label="LCL"
+              />
+            )}
+            {aggregatedData[0]?.ucl !== undefined && (
+              <ReferenceLine
+                y={aggregatedData[0]?.ucl}
+                stroke="#ff9800"
+                strokeDasharray="3 3"
+                label="UCL"
+              />
+            )}
             
             <Line
               type="monotone"

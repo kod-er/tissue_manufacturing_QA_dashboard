@@ -235,7 +235,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataParsed }) => {
               tensileStrengthCD: getValue('tensileStrengthCD'),
               tensileStrengthCDLcl: getValue('tensileStrengthCDLcl', getValue('tensileStrengthCD') * 0.9),
               tensileStrengthCDUcl: getValue('tensileStrengthCDUcl', getValue('tensileStrengthCD') * 1.1),
-              mdCdRatio: getValue('mdCdRatio'),
+              mdCdRatio: getValue('mdCdRatio') || (getValue('tensileStrengthMD') && getValue('tensileStrengthCD') ? getValue('tensileStrengthMD') / getValue('tensileStrengthCD') : 0),
               stretchElongation: getValue('stretchElongation'),
               wetTensile: getValue('wetTensile'),
               wetDryTensileRatio: getValue('wetDryTensileRatio'),
