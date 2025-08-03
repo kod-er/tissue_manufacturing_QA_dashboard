@@ -417,17 +417,21 @@ export const generatePDFReport = async (options: ReportOptions): Promise<void> =
     yPosition += barChartHeight + 20;
 
     // 2. Performance Gauge
+    checkNewPage(120); // Need 120mm for gauge chart section
+    
     const overallScore = calculateOverallScore(data);
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.text('Overall Quality Score', margin, yPosition);
     yPosition += 5;
     
-    drawGaugeChart(doc, overallScore, pageWidth / 2 - 40, yPosition, 80);
-    yPosition += 50;
+    drawGaugeChart(doc, overallScore, pageWidth / 2, yPosition + 40, 30);
+    yPosition += 100;
 
     // 3. Trend Chart (if historical data available)
     if (historicalData && historicalData.length > 1) {
+      checkNewPage(90); // Need 90mm for trend chart section
+      
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.text('7-Day Quality Trend', margin, yPosition);
@@ -440,6 +444,8 @@ export const generatePDFReport = async (options: ReportOptions): Promise<void> =
 
     // 4. Radar Chart for Multi-Parameter Overview
     if (data.gsm && data.thickness && data.bulk && data.brightness && data.moistureContent) {
+      checkNewPage(100); // Need 100mm for radar chart section
+      
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.text('Quality Parameters Overview', margin, yPosition);
@@ -447,6 +453,7 @@ export const generatePDFReport = async (options: ReportOptions): Promise<void> =
       
       const radarData = prepareRadarData(data);
       drawRadarChart(doc, radarData, pageWidth / 2, yPosition + 40, 40);
+      yPosition += 90;
     }
   }
 
@@ -655,7 +662,7 @@ function drawGaugeChart(doc: jsPDF, score: number, centerX: number, centerY: num
   
   // Draw background arc
   doc.setDrawColor(230, 230, 230);
-  doc.setLineWidth(10);
+  doc.setLineWidth(6);
   drawArc(doc, centerX, centerY, radius, startAngle, endAngle);
   
   // Draw colored sections
@@ -665,7 +672,7 @@ function drawGaugeChart(doc: jsPDF, score: number, centerX: number, centerY: num
     { start: 0.8, end: 1, color: [76, 175, 80] } // Green
   ];
   
-  doc.setLineWidth(8);
+  doc.setLineWidth(5);
   sections.forEach(section => {
     const sectionStart = startAngle + angleRange * section.start;
     const sectionEnd = startAngle + angleRange * section.end;
@@ -684,13 +691,13 @@ function drawGaugeChart(doc: jsPDF, score: number, centerX: number, centerY: num
   
   // Draw center circle
   doc.setFillColor(0, 0, 0);
-  doc.circle(centerX, centerY, 3, 'F');
+  doc.circle(centerX, centerY, 2, 'F');
   
   // Draw score text
-  doc.setFontSize(16);
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(0, 0, 0);
-  doc.text(`${score.toFixed(0)}%`, centerX, centerY + radius + 15, { align: 'center' });
+  doc.text(`${score.toFixed(0)}%`, centerX, centerY + radius + 10, { align: 'center' });
 }
 
 function drawArc(doc: jsPDF, centerX: number, centerY: number, radius: number, startAngle: number, endAngle: number) {
