@@ -13,11 +13,12 @@ export const columnMappings: ColumnMapping = {
   
   // Product Quality Metrics
   quality: ['Quality', 'QUALITY', 'Quality Grade'],
-  gsm: ['GSM', 'GSM g/m2', 'Grammage', 'Basis Weight', 'GSM (g/m2)'],
-  gsmLcl: ['GSM LCL', 'GSM Lower', 'Grammage LCL', 'GSM_LCL'],
-  gsmUcl: ['GSM UCL', 'GSM Upper', 'Grammage UCL', 'GSM_UCL'],
+  gsmGrade: ['GSM'], // GSM column with numeric grades (15, 17, 20, etc.)
+  gsm: ['GSM g/m2', 'GSM (g/m2)', 'Grammage', 'Basis Weight', 'GSM Value', 'GSM Measurement'], // Actual GSM measurement
+  gsmLcl: ['GSM LCL', 'GSM Lower', 'Grammage LCL', 'GSM_LCL', 'GSM g/m2 LCL'],
+  gsmUcl: ['GSM UCL', 'GSM Upper', 'Grammage UCL', 'GSM_UCL', 'GSM g/m2 UCL'],
   
-  thickness: ['Thickness µm', 'Thickness', 'Caliper', 'Thickness (µm)', 'THICKNESS'],
+  thickness: ['Thickness µm', 'Thickness', 'Thicness (µm)', 'Thicness', 'Caliper', 'Thickness (µm)', 'THICKNESS'],
   thicknessLcl: ['Thickness LCL', 'Thickness Lower', 'Thickness_LCL'],
   thicknessUcl: ['Thickness UCL', 'Thickness Upper', 'Thickness_UCL'],
   
@@ -87,25 +88,30 @@ export const columnMappings: ColumnMapping = {
 
 // Helper function to find column index with fuzzy matching
 export const findColumnIndex = (headerRow: any[], possibleNames: string[]): number => {
+  // First pass: Try exact matches for all possible names
   for (const name of possibleNames) {
-    // Try exact match first
-    let index = headerRow.findIndex((h: any) => 
+    const index = headerRow.findIndex((h: any) => 
       h && h.toString().trim() === name
     );
     if (index !== -1) return index;
-    
-    // Try case-insensitive match
-    index = headerRow.findIndex((h: any) => 
+  }
+  
+  // Second pass: Try case-insensitive matches
+  for (const name of possibleNames) {
+    const index = headerRow.findIndex((h: any) => 
       h && h.toString().trim().toLowerCase() === name.toLowerCase()
     );
     if (index !== -1) return index;
-    
-    // Try partial match
-    index = headerRow.findIndex((h: any) => 
+  }
+  
+  // Third pass: Try partial matches (only if no exact matches found)
+  for (const name of possibleNames) {
+    const index = headerRow.findIndex((h: any) => 
       h && h.toString().toLowerCase().includes(name.toLowerCase())
     );
     if (index !== -1) return index;
   }
+  
   return -1;
 };
 

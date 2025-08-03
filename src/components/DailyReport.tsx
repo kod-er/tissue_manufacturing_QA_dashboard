@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { 
   Paper, Typography, Box, Chip, TextField, MenuItem, 
-  Accordion, AccordionSummary, AccordionDetails, Divider 
+  Accordion, AccordionSummary, AccordionDetails, Divider,
+  Button, CircularProgress
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { Download as DownloadIcon } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import { QualityData } from '../types';
+import { generatePDFReport } from '../utils/reportGenerator';
 
 interface DailyReportProps {
   data: QualityData[];
@@ -54,17 +57,59 @@ const MetricCard: React.FC<MetricCardProps> = ({ title, value, lcl, ucl, unit = 
 
 const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
   const [selectedDate, setSelectedDate] = useState<string>(data[0]?.date || '');
+  const [selectedShift, setSelectedShift] = useState<string>('all');
+  const [selectedQuality, setSelectedQuality] = useState<string>('all');
+  const [selectedGSM, setSelectedGSM] = useState<string>('all');
+  const [downloading, setDownloading] = useState(false);
   
-  const availableDates = data.map(d => d.date);
-  const selectedData = data.find(d => d.date === selectedDate) || data[0];
+  // Get unique dates
+  const availableDates = Array.from(new Set(data.map(d => d.date)));
   
-  if (!selectedData) {
+  // Get data for selected date
+  const dateData = data.filter(d => d.date === selectedDate);
+  
+  // Get available shifts, qualities, and GSM grades for selected date
+  const availableShifts = Array.from(new Set(dateData.map(d => d.shift).filter(Boolean)));
+  const availableQualities = Array.from(new Set(dateData.map(d => d.quality).filter(Boolean)));
+  const availableGSMs = Array.from(new Set(dateData.map(d => d.gsmGrade).filter(Boolean)));
+  
+  // Filter data based on selections
+  let selectedData = dateData;
+  if (selectedShift !== 'all') {
+    selectedData = selectedData.filter(d => d.shift === selectedShift);
+  }
+  if (selectedQuality !== 'all') {
+    selectedData = selectedData.filter(d => d.quality === selectedQuality);
+  }
+  if (selectedGSM !== 'all') {
+    selectedData = selectedData.filter(d => d.gsmGrade === selectedGSM);
+  }
+  
+  // If multiple records after filtering, show the first one
+  const displayData = selectedData[0] || data[0];
+  
+  if (!displayData) {
     return (
       <Paper sx={{ p: 3 }}>
         <Typography>No data available</Typography>
       </Paper>
     );
   }
+
+  const handleDownloadReport = async () => {
+    setDownloading(true);
+    try {
+      await generatePDFReport({ 
+        data: displayData,
+        historicalData: data,
+        includeCharts: true
+      });
+    } catch (error) {
+      console.error('Error generating report:', error);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -73,12 +118,16 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
           Daily Quality Report
         </Typography>
         
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
           <TextField
             select
             size="small"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            onChange={(e) => {
+              setSelectedDate(e.target.value);
+              setSelectedShift('all');
+              setSelectedQuality('all');
+            }}
             sx={{ minWidth: 200 }}
             label="Select Date"
           >
@@ -88,20 +137,97 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
               </MenuItem>
             ))}
           </TextField>
+          
+          {availableShifts.length > 1 && (
+            <TextField
+              select
+              size="small"
+              value={selectedShift}
+              onChange={(e) => setSelectedShift(e.target.value)}
+              sx={{ minWidth: 120 }}
+              label="Shift"
+            >
+              <MenuItem value="all">All Shifts</MenuItem>
+              {availableShifts.map((shift) => (
+                <MenuItem key={shift} value={shift}>
+                  {shift}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          
+          {availableQualities.length > 1 && (
+            <TextField
+              select
+              size="small"
+              value={selectedQuality}
+              onChange={(e) => setSelectedQuality(e.target.value)}
+              sx={{ minWidth: 150 }}
+              label="Quality"
+            >
+              <MenuItem value="all">All Qualities</MenuItem>
+              {availableQualities.map((quality) => (
+                <MenuItem key={quality} value={quality}>
+                  {quality}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          
+          {availableGSMs.length > 1 && (
+            <TextField
+              select
+              size="small"
+              value={selectedGSM}
+              onChange={(e) => setSelectedGSM(e.target.value)}
+              sx={{ minWidth: 120 }}
+              label="GSM"
+            >
+              <MenuItem value="all">All GSM</MenuItem>
+              {availableGSMs.map((gsm) => (
+                <MenuItem key={gsm} value={gsm}>
+                  {gsm}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          
+          <Button
+            variant="contained"
+            startIcon={downloading ? <CircularProgress size={20} color="inherit" /> : <DownloadIcon />}
+            onClick={handleDownloadReport}
+            disabled={downloading}
+          >
+            {downloading ? 'Generating...' : 'Download Report'}
+          </Button>
         </Box>
       </Box>
 
+      {/* Show multiple records info if available */}
+      {dateData.length > 1 && (
+        <Box sx={{ mb: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+          <Typography variant="body2">
+            {dateData.length} records found for {dayjs(selectedDate).format('MMMM DD, YYYY')}. 
+            {selectedShift !== 'all' && ` Showing shift: ${selectedShift}.`}
+            {selectedQuality !== 'all' && ` Showing quality: ${selectedQuality}.`}
+            {selectedGSM !== 'all' && ` Showing GSM: ${selectedGSM}.`}
+          </Typography>
+        </Box>
+      )}
+
       {/* Production Metadata */}
-      {(selectedData.shift || selectedData.lotNo || selectedData.labExecutive) && (
+      {(displayData.shift || displayData.lotNo || displayData.labExecutive) && (
         <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
           <Typography variant="h6" gutterBottom>Production Details</Typography>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            {selectedData.shift && <Chip label={`Shift: ${selectedData.shift}`} />}
-            {selectedData.lotNo && <Chip label={`Lot: ${selectedData.lotNo}`} />}
-            {selectedData.rollNo && <Chip label={`Roll: ${selectedData.rollNo}`} />}
-            {selectedData.spoolNo && <Chip label={`Spool: ${selectedData.spoolNo}`} />}
-            {selectedData.labExecutive && <Chip label={`Lab: ${selectedData.labExecutive}`} />}
-            {selectedData.quality && <Chip label={`Quality: ${selectedData.quality}`} color="primary" />}
+            {displayData.shift && <Chip label={`Shift: ${displayData.shift}`} />}
+            {displayData.lotNo && <Chip label={`Lot: ${displayData.lotNo}`} />}
+            {displayData.rollNo && <Chip label={`Roll: ${displayData.rollNo}`} />}
+            {displayData.spoolNo && <Chip label={`Spool: ${displayData.spoolNo}`} />}
+            {displayData.labExecutive && <Chip label={`Lab: ${displayData.labExecutive}`} />}
+            {displayData.quality && <Chip label={`Quality: ${displayData.quality}`} color="primary" />}
+            {displayData.gsmGrade && <Chip label={`GSM: ${displayData.gsmGrade}`} color="secondary" />}
+            {displayData.time && <Chip label={`Time: ${displayData.time}`} variant="outlined" />}
           </Box>
         </Box>
       )}
@@ -120,75 +246,75 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
         mb: 3
       }}>
         <MetricCard
-          title="GSM (Grammage)"
-          value={selectedData.gsm}
-          lcl={selectedData.gsmLcl}
-          ucl={selectedData.gsmUcl}
+          title="GSM (g/m²)"
+          value={displayData.gsm}
+          lcl={displayData.gsmLcl}
+          ucl={displayData.gsmUcl}
           unit="g/m²"
         />
         
         <MetricCard
           title="Thickness"
-          value={selectedData.thickness}
-          lcl={selectedData.thicknessLcl}
-          ucl={selectedData.thicknessUcl}
+          value={displayData.thickness}
+          lcl={displayData.thicknessLcl}
+          ucl={displayData.thicknessUcl}
           unit="µm"
         />
         
         <MetricCard
           title="Bulk"
-          value={selectedData.bulk}
-          lcl={selectedData.bulkLcl}
-          ucl={selectedData.bulkUcl}
+          value={displayData.bulk}
+          lcl={displayData.bulkLcl}
+          ucl={displayData.bulkUcl}
           unit="cc/g"
         />
         
         <MetricCard
           title="Dry Tensile MD"
-          value={selectedData.tensileStrengthMD}
-          lcl={selectedData.tensileStrengthMDLcl}
-          ucl={selectedData.tensileStrengthMDUcl}
+          value={displayData.tensileStrengthMD}
+          lcl={displayData.tensileStrengthMDLcl}
+          ucl={displayData.tensileStrengthMDUcl}
           unit="N/m"
         />
         
         <MetricCard
           title="Dry Tensile CD"
-          value={selectedData.tensileStrengthCD}
-          lcl={selectedData.tensileStrengthCDLcl}
-          ucl={selectedData.tensileStrengthCDUcl}
+          value={displayData.tensileStrengthCD}
+          lcl={displayData.tensileStrengthCDLcl}
+          ucl={displayData.tensileStrengthCDUcl}
           unit="N/m"
         />
         
-        {selectedData.mdCdRatio && (
+        {displayData.mdCdRatio && (
           <MetricCard
             title="MD/CD Ratio"
-            value={selectedData.mdCdRatio}
+            value={displayData.mdCdRatio}
             unit=""
           />
         )}
         
         <MetricCard
           title="Brightness ISO"
-          value={selectedData.brightness}
-          lcl={selectedData.brightnessLcl}
-          ucl={selectedData.brightnessUcl}
+          value={displayData.brightness}
+          lcl={displayData.brightnessLcl}
+          ucl={displayData.brightnessUcl}
           unit="%"
         />
         
         <MetricCard
           title="Moisture"
-          value={selectedData.moistureContent}
-          lcl={selectedData.moistureContentLcl}
-          ucl={selectedData.moistureContentUcl}
+          value={displayData.moistureContent}
+          lcl={displayData.moistureContentLcl}
+          ucl={displayData.moistureContentUcl}
           unit="%"
         />
         
-        {selectedData.opacity && (
+        {displayData.opacity && (
           <MetricCard
             title="Opacity"
-            value={selectedData.opacity}
-            lcl={selectedData.opacityLcl}
-            ucl={selectedData.opacityUcl}
+            value={displayData.opacity}
+            lcl={displayData.opacityLcl}
+            ucl={displayData.opacityUcl}
             unit="%"
           />
         )}
@@ -205,20 +331,20 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
             gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, 
             gap: 2 
           }}>
-            {selectedData.stretchElongation && (
-              <MetricCard title="Stretch/Elongation" value={selectedData.stretchElongation} unit="%" />
+            {displayData.stretchElongation && (
+              <MetricCard title="Stretch/Elongation" value={displayData.stretchElongation} unit="%" />
             )}
-            {selectedData.wetTensile && (
-              <MetricCard title="Wet Tensile" value={selectedData.wetTensile} unit="gf/50mm" />
+            {displayData.wetTensile && (
+              <MetricCard title="Wet Tensile" value={displayData.wetTensile} unit="gf/50mm" />
             )}
-            {selectedData.wetDryTensileRatio && (
-              <MetricCard title="Wet/Dry Tensile" value={selectedData.wetDryTensileRatio} unit="%" />
+            {displayData.wetDryTensileRatio && (
+              <MetricCard title="Wet/Dry Tensile" value={displayData.wetDryTensileRatio} unit="%" />
             )}
-            {selectedData.grossMeanStrength && (
-              <MetricCard title="Gross Mean Strength" value={selectedData.grossMeanStrength} unit="" />
+            {displayData.grossMeanStrength && (
+              <MetricCard title="Gross Mean Strength" value={displayData.grossMeanStrength} unit="" />
             )}
-            {selectedData.machineCreepPercent && (
-              <MetricCard title="Machine Creep" value={selectedData.machineCreepPercent} unit="%" />
+            {displayData.machineCreepPercent && (
+              <MetricCard title="Machine Creep" value={displayData.machineCreepPercent} unit="%" />
             )}
           </Box>
         </AccordionDetails>
@@ -235,23 +361,23 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
             gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, 
             gap: 2 
           }}>
-            {selectedData.machineSpeed && (
-              <MetricCard title="Machine Speed" value={selectedData.machineSpeed} unit="Mpm" />
+            {displayData.machineSpeed && (
+              <MetricCard title="Machine Speed" value={displayData.machineSpeed} unit="Mpm" />
             )}
-            {selectedData.popeReelSpeed && (
-              <MetricCard title="Pope Reel Speed" value={selectedData.popeReelSpeed} unit="Mpm" />
+            {displayData.popeReelSpeed && (
+              <MetricCard title="Pope Reel Speed" value={displayData.popeReelSpeed} unit="Mpm" />
             )}
-            {selectedData.mcDraw && (
-              <MetricCard title="MC Draw" value={selectedData.mcDraw} unit="" />
+            {displayData.mcDraw && (
+              <MetricCard title="MC Draw" value={displayData.mcDraw} unit="" />
             )}
-            {selectedData.nextPressLoad && (
-              <MetricCard title="Press Load" value={selectedData.nextPressLoad} unit="" />
+            {displayData.nextPressLoad && (
+              <MetricCard title="Press Load" value={displayData.nextPressLoad} unit="" />
             )}
-            {selectedData.coating && (
-              <MetricCard title="Coating" value={selectedData.coating} unit="" />
+            {displayData.coating && (
+              <MetricCard title="Coating" value={displayData.coating} unit="" />
             )}
-            {selectedData.coating1 && (
-              <MetricCard title="Coating 2" value={selectedData.coating1} unit="" />
+            {displayData.coating1 && (
+              <MetricCard title="Coating 2" value={displayData.coating1} unit="" />
             )}
           </Box>
         </AccordionDetails>
@@ -264,54 +390,54 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
         </AccordionSummary>
         <AccordionDetails>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
-            {selectedData.hwGrade && <Chip label={`HW Grade: ${selectedData.hwGrade}`} />}
-            {selectedData.swGrade && <Chip label={`SW Grade: ${selectedData.swGrade}`} />}
+            {displayData.hwGrade && <Chip label={`HW Grade: ${displayData.hwGrade}`} />}
+            {displayData.swGrade && <Chip label={`SW Grade: ${displayData.swGrade}`} />}
           </Box>
           <Box sx={{ 
             display: 'grid', 
             gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, 
             gap: 2 
           }}>
-            {selectedData.shortFiberPercent && (
-              <MetricCard title="Short Fiber" value={selectedData.shortFiberPercent} unit="%" />
+            {displayData.shortFiberPercent && (
+              <MetricCard title="Short Fiber" value={displayData.shortFiberPercent} unit="%" />
             )}
-            {selectedData.longFiberPercent && (
-              <MetricCard title="Long Fiber" value={selectedData.longFiberPercent} unit="%" />
+            {displayData.longFiberPercent && (
+              <MetricCard title="Long Fiber" value={displayData.longFiberPercent} unit="%" />
             )}
-            {selectedData.brokePercent && (
-              <MetricCard title="Broke" value={selectedData.brokePercent} unit="%" />
+            {displayData.brokePercent && (
+              <MetricCard title="Broke" value={displayData.brokePercent} unit="%" />
             )}
-            {selectedData.hwCy && (
-              <MetricCard title="HW Consistency" value={selectedData.hwCy} unit="" />
+            {displayData.hwCy && (
+              <MetricCard title="HW Consistency" value={displayData.hwCy} unit="" />
             )}
-            {selectedData.hwSr && (
-              <MetricCard title="HW SR" value={selectedData.hwSr} unit="" />
+            {displayData.hwSr && (
+              <MetricCard title="HW SR" value={displayData.hwSr} unit="" />
             )}
-            {selectedData.swCy && (
-              <MetricCard title="SW Consistency" value={selectedData.swCy} unit="" />
+            {displayData.swCy && (
+              <MetricCard title="SW Consistency" value={displayData.swCy} unit="" />
             )}
-            {selectedData.swOsr && (
-              <MetricCard title="SW OSR" value={selectedData.swOsr} unit="" />
+            {displayData.swOsr && (
+              <MetricCard title="SW OSR" value={displayData.swOsr} unit="" />
             )}
-            {selectedData.wsrKgHrs && (
-              <MetricCard title="WSR" value={selectedData.wsrKgHrs} unit="Kg/Hr" />
+            {displayData.wsrKgHrs && (
+              <MetricCard title="WSR" value={displayData.wsrKgHrs} unit="Kg/Hr" />
             )}
-            {selectedData.dsrKgHrs && (
-              <MetricCard title="DSR" value={selectedData.dsrKgHrs} unit="Kg/Hr" />
+            {displayData.dsrKgHrs && (
+              <MetricCard title="DSR" value={displayData.dsrKgHrs} unit="Kg/Hr" />
             )}
           </Box>
         </AccordionDetails>
       </Accordion>
 
       {/* Remarks Section */}
-      {(selectedData.remarks || selectedData.break) && (
+      {(displayData.remarks || displayData.break) && (
         <Box sx={{ mt: 3, p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
           <Typography variant="h6" gutterBottom>Remarks & Defects</Typography>
-          {selectedData.remarks && (
-            <Typography variant="body2">Remarks: {selectedData.remarks}</Typography>
+          {displayData.remarks && (
+            <Typography variant="body2">Remarks: {displayData.remarks}</Typography>
           )}
-          {selectedData.break && (
-            <Typography variant="body2">Break: {selectedData.break}</Typography>
+          {displayData.break && (
+            <Typography variant="body2">Break: {displayData.break}</Typography>
           )}
         </Box>
       )}
@@ -328,20 +454,20 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
             variant="outlined"
           />
           <Chip
-            label={`In Spec: ${Object.entries(selectedData).filter(([key, value]) => {
+            label={`In Spec: ${Object.entries(displayData).filter(([key, value]) => {
               if (key.includes('Lcl') || key.includes('Ucl') || key === 'date' || typeof value !== 'number') return false;
-              const lcl = selectedData[`${key}Lcl` as keyof QualityData] as number;
-              const ucl = selectedData[`${key}Ucl` as keyof QualityData] as number;
+              const lcl = displayData[`${key}Lcl` as keyof QualityData] as number;
+              const ucl = displayData[`${key}Ucl` as keyof QualityData] as number;
               return lcl && ucl && value >= lcl && value <= ucl;
             }).length}`}
             color="success"
             variant="outlined"
           />
           <Chip
-            label={`Out of Spec: ${Object.entries(selectedData).filter(([key, value]) => {
+            label={`Out of Spec: ${Object.entries(displayData).filter(([key, value]) => {
               if (key.includes('Lcl') || key.includes('Ucl') || key === 'date' || typeof value !== 'number') return false;
-              const lcl = selectedData[`${key}Lcl` as keyof QualityData] as number;
-              const ucl = selectedData[`${key}Ucl` as keyof QualityData] as number;
+              const lcl = displayData[`${key}Lcl` as keyof QualityData] as number;
+              const ucl = displayData[`${key}Ucl` as keyof QualityData] as number;
               return lcl && ucl && (value < lcl || value > ucl);
             }).length}`}
             color="error"

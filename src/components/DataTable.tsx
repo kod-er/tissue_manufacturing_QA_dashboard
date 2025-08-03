@@ -12,7 +12,8 @@ import {
   TableHead,
   TableRow,
   TablePagination,
-  InputAdornment
+  InputAdornment,
+  MenuItem
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -28,21 +29,39 @@ const DataTable: React.FC<DataTableProps> = ({ data, fileName }) => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
+  const [shiftFilter, setShiftFilter] = useState<string>('all');
+  const [qualityFilter, setQualityFilter] = useState<string>('all');
+  const [gsmFilter, setGsmFilter] = useState<string>('all');
+  
+  // Get available shifts, qualities, and GSM grades
+  const availableShifts = Array.from(new Set(data.map(d => d.shift).filter(Boolean)));
+  const availableQualities = Array.from(new Set(data.map(d => d.quality).filter(Boolean)));
+  const availableGSMs = Array.from(new Set(data.map(d => d.gsmGrade).filter(Boolean)));
 
   const filteredData = data.filter(row => {
     const searchLower = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = searchTerm === '' || (
       row.date.includes(searchTerm) ||
       Object.values(row).some(val => 
         val !== undefined && val !== null && val.toString().toLowerCase().includes(searchLower)
       )
     );
+    
+    const matchesShift = shiftFilter === 'all' || row.shift === shiftFilter;
+    const matchesQuality = qualityFilter === 'all' || row.quality === qualityFilter;
+    const matchesGSM = gsmFilter === 'all' || row.gsmGrade === gsmFilter;
+    
+    return matchesSearch && matchesShift && matchesQuality && matchesGSM;
   });
 
   const exportToCSV = () => {
     const headers = [
       'Date',
-      'GSM', 'GSM LCL', 'GSM UCL',
+      'Time',
+      'Shift',
+      'Quality',
+      'GSM Grade',
+      'GSM (g/m²)', 'GSM LCL', 'GSM UCL',
       'Thickness', 'Thickness LCL', 'Thickness UCL',
       'Tensile MD', 'Tensile MD LCL', 'Tensile MD UCL',
       'Tensile CD', 'Tensile CD LCL', 'Tensile CD UCL',
@@ -53,6 +72,10 @@ const DataTable: React.FC<DataTableProps> = ({ data, fileName }) => {
 
     const rows = filteredData.map(row => [
       row.date,
+      row.time || '',
+      row.shift || '',
+      row.quality || '',
+      row.gsmGrade || '',
       row.gsm, row.gsmLcl, row.gsmUcl,
       row.thickness, row.thicknessLcl, row.thicknessUcl,
       row.tensileStrengthMD, row.tensileStrengthMDLcl, row.tensileStrengthMDUcl,
@@ -91,7 +114,7 @@ const DataTable: React.FC<DataTableProps> = ({ data, fileName }) => {
           Quality Data Table
         </Typography>
         
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
           <TextField
             size="small"
             placeholder="Search..."
@@ -105,6 +128,60 @@ const DataTable: React.FC<DataTableProps> = ({ data, fileName }) => {
               ),
             }}
           />
+          
+          {availableShifts.length > 0 && (
+            <TextField
+              select
+              size="small"
+              value={shiftFilter}
+              onChange={(e) => setShiftFilter(e.target.value)}
+              sx={{ minWidth: 120 }}
+              label="Shift"
+            >
+              <MenuItem value="all">All Shifts</MenuItem>
+              {availableShifts.map((shift) => (
+                <MenuItem key={shift} value={shift}>
+                  {shift}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          
+          {availableQualities.length > 0 && (
+            <TextField
+              select
+              size="small"
+              value={qualityFilter}
+              onChange={(e) => setQualityFilter(e.target.value)}
+              sx={{ minWidth: 150 }}
+              label="Quality"
+            >
+              <MenuItem value="all">All Qualities</MenuItem>
+              {availableQualities.map((quality) => (
+                <MenuItem key={quality} value={quality}>
+                  {quality}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          
+          {availableGSMs.length > 0 && (
+            <TextField
+              select
+              size="small"
+              value={gsmFilter}
+              onChange={(e) => setGsmFilter(e.target.value)}
+              sx={{ minWidth: 120 }}
+              label="GSM"
+            >
+              <MenuItem value="all">All GSM</MenuItem>
+              {availableGSMs.map((gsm) => (
+                <MenuItem key={gsm} value={gsm}>
+                  {gsm}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
           
           <Button
             variant="contained"
@@ -121,6 +198,10 @@ const DataTable: React.FC<DataTableProps> = ({ data, fileName }) => {
           <TableHead>
             <TableRow>
               <TableCell>Date</TableCell>
+              <TableCell>Time</TableCell>
+              <TableCell>Shift</TableCell>
+              <TableCell>Quality</TableCell>
+              <TableCell>GSM Grade</TableCell>
               <TableCell align="center" colSpan={3}>GSM (g/m²)</TableCell>
               <TableCell align="center" colSpan={3}>Thickness (mm)</TableCell>
               <TableCell align="center" colSpan={3}>Tensile MD (N/m)</TableCell>
@@ -130,6 +211,10 @@ const DataTable: React.FC<DataTableProps> = ({ data, fileName }) => {
               <TableCell align="center" colSpan={3}>Moisture (%)</TableCell>
             </TableRow>
             <TableRow>
+              <TableCell />
+              <TableCell />
+              <TableCell />
+              <TableCell />
               <TableCell />
               {Array(7).fill(null).map((_, i) => (
                 <React.Fragment key={i}>
@@ -146,6 +231,10 @@ const DataTable: React.FC<DataTableProps> = ({ data, fileName }) => {
               .map((row, index) => (
                 <TableRow key={index} hover>
                   <TableCell>{dayjs(row.date).format('MM/DD/YYYY')}</TableCell>
+                  <TableCell>{row.time || '-'}</TableCell>
+                  <TableCell>{row.shift || '-'}</TableCell>
+                  <TableCell>{row.quality || '-'}</TableCell>
+                  <TableCell>{row.gsmGrade || '-'}</TableCell>
                   
                   <TableCell align="center" sx={{ color: getCellColor(row.gsm, row.gsmLcl, row.gsmUcl) }}>
                     {row.gsm.toFixed(2)}

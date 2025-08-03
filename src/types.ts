@@ -11,7 +11,8 @@ export interface QualityData {
   
   // Product Quality Metrics
   quality?: string;
-  gsm: number;
+  gsmGrade?: string;  // GSM grade (15, 12.5, 17, 20, etc.)
+  gsm: number;        // GSM measurement in g/m²
   gsmLcl: number;
   gsmUcl: number;
   thickness: number;  // in µm

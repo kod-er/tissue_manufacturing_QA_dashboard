@@ -26,7 +26,10 @@ A comprehensive React-based quality assurance dashboard for tissue manufacturing
 - **Dark Mode**: Toggle between light and dark themes
 - **Responsive Design**: Optimized for desktop, tablet, and mobile devices
 - **Advanced Filtering**: Search and filter through historical data
-- **Export Capabilities**: Download data as CSV for further analysis
+- **Export Capabilities**: 
+  - Download comprehensive PDF reports for any date
+  - Export data as CSV for further analysis
+  - Save trend charts as PNG images
 
 ## Tracked Parameters
 

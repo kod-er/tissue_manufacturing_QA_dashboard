@@ -126,6 +126,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataParsed }) => {
           const headerRow = jsonData[0] || [];
           
           // Get column mappings
+          // Note: 'GSM' column refers to quality grade, 'GSM g/m2' is the actual measurement
           const getColumnMappings = getAllColumnMappings();
           const columnMap = getColumnMappings(headerRow);
           
@@ -218,6 +219,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataParsed }) => {
               rollNo: getValue('rollNo', ''),
               spoolNo: getValue('spoolNo', ''),
               quality: getValue('quality', ''),
+              gsmGrade: getValue('gsmGrade', ''),
               gsm: getValue('gsm'),
               gsmLcl: getValue('gsmLcl', getValue('gsm') * 0.95),
               gsmUcl: getValue('gsmUcl', getValue('gsm') * 1.05),

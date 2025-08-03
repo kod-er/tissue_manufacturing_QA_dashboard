@@ -130,7 +130,20 @@ function App() {
   };
 
   const speedDialActions = [
-    { icon: <FileDownload />, name: 'Export Report', action: () => console.log('Export') },
+    { 
+      icon: <FileDownload />, 
+      name: 'Export Report', 
+      action: async () => {
+        if (data.length > 0) {
+          const { generatePDFReport } = await import('./utils/reportGenerator');
+          await generatePDFReport({ 
+            data: data[0],
+            historicalData: data,
+            includeCharts: true
+          });
+        }
+      } 
+    },
     { icon: <Print />, name: 'Print', action: () => window.print() },
     { icon: <Share />, name: 'Share', action: () => console.log('Share') },
   ];
