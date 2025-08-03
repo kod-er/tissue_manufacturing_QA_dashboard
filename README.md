@@ -1,46 +1,158 @@
-# Getting Started with Create React App
+# Tissue Manufacturing QA Dashboard
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A comprehensive React-based quality assurance dashboard for tissue manufacturing, designed for Gayatri Shakti. This application provides real-time quality monitoring, trend analysis, and advanced analytics for tissue production data.
 
-## Available Scripts
+![Gayatri Shakti Logo](public/gayatrishakti_logo-curve-02.png)
 
-In the project directory, you can run:
+## Features
 
-### `npm start`
+### 📊 Data Management
+- **Excel File Upload**: Supports .xlsx, .xls, and .xlsm files with drag-and-drop functionality
+- **Intelligent Column Mapping**: Automatically detects and maps over 50 quality parameters
+- **Date Format Support**: Handles various date formats including "1-Jan-25" format
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+### 📈 Quality Monitoring
+- **Daily Reports**: View comprehensive quality metrics for any selected date
+- **Real-time Status**: Color-coded indicators for in-spec/out-of-spec parameters
+- **Production Metadata**: Track shifts, operators, lot numbers, and machine parameters
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+### 📉 Analytics & Visualization
+- **Trend Analysis**: Daily, weekly, and monthly trend charts with control limits
+- **Process Capability (Cpk)**: Calculate and visualize process performance metrics
+- **Quality Score Tracking**: Monitor overall quality performance over time
+- **Issue Identification**: Automatic detection of most frequent out-of-spec parameters
 
-### `npm test`
+### 🎨 User Experience
+- **Dark Mode**: Toggle between light and dark themes
+- **Responsive Design**: Optimized for desktop, tablet, and mobile devices
+- **Advanced Filtering**: Search and filter through historical data
+- **Export Capabilities**: Download data as CSV for further analysis
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Tracked Parameters
 
-### `npm run build`
+### Production Metadata
+- Date, Time, Shift, Lab Executive, Machine Shift Incharge
+- Lot No, Roll No, Spool No
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Product Quality Metrics
+- GSM (Grammage) with LCL/UCL
+- Thickness (μm) with LCL/UCL
+- Bulk (cc/gm) with LCL/UCL
+- Dry Strength (MD/CD) with LCL/UCL
+- MD/CD Ratio
+- Stretch/Elongation %
+- Wet Tensile (gf/50mm)
+- Wet/Dry Tensile Ratio (%)
+- Brightness % ISO with LCL/UCL
+- Opacity % with LCL/UCL
+- Moisture % with LCL/UCL
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Machine Parameters
+- Machine Speed (Mpm)
+- Pope Reel Speed (Mpm)
+- MC Draw, Blade, Press Load
+- Coating parameters
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### Fiber Composition
+- HW/SW Grade and properties
+- Short/Long Fiber percentages
+- Broke percentage
+- Consumption rates (WSR/DSR)
 
-### `npm run eject`
+## Installation
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+1. Clone the repository:
+```bash
+git clone git@github.com:kod-er/tissue_manufacturing_QA_dashboard.git
+cd tissue-qa-dashboard
+```
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+2. Install dependencies:
+```bash
+npm install
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+3. Start the development server:
+```bash
+npm start
+```
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+The application will open at http://localhost:3000
 
-## Learn More
+## Usage
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+1. **Upload Data**: Click the upload button or drag-and-drop your Excel file containing quality data
+2. **Navigate**: Use the tab navigation to switch between different views
+3. **Select Date**: In the Daily Report, use the date selector to view specific day's data
+4. **Analyze Trends**: Switch to Trend Analysis to view performance over time
+5. **Export Data**: Use the export button in the Data Table to download CSV
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Excel File Requirements
+
+- Must contain a sheet named "DATA"
+- First column should contain dates (supports formats like "1-Jan-25")
+- Column headers should match the parameter names (fuzzy matching is supported)
+- Control limits (LCL/UCL) can be included as separate columns
+
+## Technology Stack
+
+- **Frontend**: React 18 with TypeScript
+- **UI Framework**: Material-UI v5
+- **Charts**: Recharts
+- **Excel Processing**: SheetJS (xlsx)
+- **Date Handling**: Day.js
+- **State Management**: React Hooks
+
+## Browser Support
+
+- Chrome (latest)
+- Firefox (latest)
+- Safari (latest)
+- Edge (latest)
+
+## Development
+
+### Available Scripts
+
+- `npm start` - Run development server
+- `npm test` - Run tests
+- `npm run build` - Build for production
+- `npm run eject` - Eject from Create React App
+
+### Project Structure
+
+```
+src/
+├── components/
+│   ├── FileUpload.tsx      # Excel file upload component
+│   ├── DailyReport.tsx     # Daily quality report view
+│   ├── TrendAnalysis.tsx   # Trend charts and analysis
+│   ├── AdvancedMetrics.tsx # Process capability and analytics
+│   └── DataTable.tsx       # Searchable data table with export
+├── utils/
+│   ├── columnMappings.ts   # Excel column mapping configuration
+│   └── analyzeExcel.ts     # Excel file structure analyzer
+├── types.ts                # TypeScript interfaces
+├── theme.ts                # Material-UI theme configuration
+└── App.tsx                 # Main application component
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## License
+
+This project is proprietary software for Gayatri Shakti.
+
+## Support
+
+For support and questions, please contact the development team.
+
+---
+
+Developed for Gayatri Shakti - Excellence in Tissue Manufacturing
