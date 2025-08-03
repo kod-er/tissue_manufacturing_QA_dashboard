@@ -9,10 +9,19 @@ interface ReportOptions {
   companyName?: string;
   logoUrl?: string;
   includeCharts?: boolean;
+  breakdown?: {
+    allData: QualityData[];
+    filters: {
+      date: string;
+      shift: string;
+      quality: string;
+      gsmGrade: string;
+    };
+  };
 }
 
 export const generatePDFReport = async (options: ReportOptions): Promise<void> => {
-  const { data, historicalData = [], companyName = 'Gayatri Shakti', logoUrl = '/gayatrishakti_logo-curve-02.png', includeCharts = true } = options;
+  const { data, historicalData = [], companyName = 'Gayatri Shakti', logoUrl = '/gayatrishakti_logo-curve-02.png', includeCharts = true, breakdown } = options;
   
   // Create new PDF document
   const doc = new jsPDF({
@@ -69,7 +78,31 @@ export const generatePDFReport = async (options: ReportOptions): Promise<void> =
 
   doc.setFontSize(12);
   doc.text(`Date: ${dayjs(data.date).format('MMMM DD, YYYY')}`, pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 15;
+  yPosition += 8;
+  
+  // Show filter information if breakdown exists
+  if (breakdown && breakdown.filters) {
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'italic');
+    const filterTexts = [];
+    if (breakdown.filters.shift !== 'all') filterTexts.push(`Shift: ${breakdown.filters.shift}`);
+    if (breakdown.filters.quality !== 'all') filterTexts.push(`Quality: ${breakdown.filters.quality}`);
+    if (breakdown.filters.gsmGrade !== 'all') filterTexts.push(`GSM: ${breakdown.filters.gsmGrade}`);
+    
+    if (filterTexts.length > 0) {
+      doc.text(`Filtered by: ${filterTexts.join(', ')}`, pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 6;
+    }
+    
+    if (breakdown.allData.length > 1) {
+      doc.setTextColor(33, 150, 243);
+      doc.text(`Showing aggregated data from ${breakdown.allData.length} records`, pageWidth / 2, yPosition, { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+      yPosition += 6;
+    }
+  }
+  
+  yPosition += 9;
 
   // Production Information Section
   if (data.shift || data.lotNo || data.labExecutive) {
@@ -291,6 +324,19 @@ export const generatePDFReport = async (options: ReportOptions): Promise<void> =
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 0, 0);
     doc.text('Quality Performance Summary', margin, yPosition);
+    
+    if (breakdown && breakdown.filters && (breakdown.filters.shift !== 'all' || breakdown.filters.quality !== 'all' || breakdown.filters.gsmGrade !== 'all')) {
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'italic');
+      const filterInfo = [];
+      if (breakdown.filters.shift !== 'all') filterInfo.push(breakdown.filters.shift);
+      if (breakdown.filters.quality !== 'all') filterInfo.push(breakdown.filters.quality);
+      if (breakdown.filters.gsmGrade !== 'all') filterInfo.push(`GSM ${breakdown.filters.gsmGrade}`);
+      doc.text(` (${filterInfo.join(', ')})`, margin + doc.getTextWidth('Quality Performance Summary') + 2, yPosition);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+    }
+    
     yPosition += 10;
 
     // Create a visual summary table with color coding
@@ -457,7 +503,90 @@ export const generatePDFReport = async (options: ReportOptions): Promise<void> =
     }
   }
 
-  // Footer
+  // Category Breakdown Section (when aggregated data)
+  if (breakdown && breakdown.allData.length > 1) {
+    doc.addPage();
+    yPosition = margin;
+    
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text('Detailed Breakdown by Category', pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 15;
+    
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Date: ${dayjs(breakdown.filters.date).format('MMMM DD, YYYY')}`, margin, yPosition);
+    yPosition += 7;
+    doc.text(`Records analyzed: ${breakdown.allData.length}`, margin, yPosition);
+    yPosition += 10;
+    
+    // Group data by shift
+    const shiftGroups = groupDataByCategory(breakdown.allData, 'shift');
+    if (Object.keys(shiftGroups).length > 1) {
+      yPosition = addCategoryBreakdown(doc, 'Shift', shiftGroups, yPosition, margin, pageWidth, checkNewPage);
+    }
+    
+    // Group data by quality
+    const qualityGroups = groupDataByCategory(breakdown.allData, 'quality');
+    if (Object.keys(qualityGroups).length > 1) {
+      yPosition = addCategoryBreakdown(doc, 'Quality', qualityGroups, yPosition, margin, pageWidth, checkNewPage);
+    }
+    
+    // Group data by GSM grade
+    const gsmGroups = groupDataByCategory(breakdown.allData, 'gsmGrade');
+    if (Object.keys(gsmGroups).length > 1) {
+      yPosition = addCategoryBreakdown(doc, 'GSM Grade', gsmGroups, yPosition, margin, pageWidth, checkNewPage);
+    }
+    
+    // Detailed metrics comparison table
+    checkNewPage(150);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('All Records Detail', margin, yPosition);
+    yPosition += 10;
+    
+    const detailHeaders = ['Time', 'Shift', 'Quality', 'GSM', 'GSM Val', 'Thickness', 'Tensile MD', 'Tensile CD', 'Bulk', 'Brightness', 'Moisture'];
+    const detailRows = breakdown.allData.map(record => [
+      record.time || '-',
+      record.shift || '-',
+      record.quality || '-',
+      record.gsmGrade || '-',
+      record.gsm.toFixed(2),
+      record.thickness.toFixed(2),
+      record.tensileStrengthMD.toFixed(0),
+      record.tensileStrengthCD.toFixed(0),
+      record.bulk.toFixed(2),
+      record.brightness.toFixed(1),
+      record.moistureContent.toFixed(1)
+    ]);
+    
+    autoTable(doc, {
+      head: [detailHeaders],
+      body: detailRows,
+      startY: yPosition,
+      theme: 'striped',
+      headStyles: { fillColor: [33, 150, 243], textColor: 255, fontSize: 9 },
+      bodyStyles: { fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 15 },
+        2: { cellWidth: 20 },
+        3: { cellWidth: 15 },
+      },
+      margin: { left: margin, right: margin },
+      didDrawPage: function() {
+        // Add footer on each page
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(128, 128, 128);
+        const footerText = `Generated on ${dayjs().format('MMMM DD, YYYY HH:mm')}`;
+        doc.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
+      }
+    });
+  }
+
+  // Footer for last page
   doc.setFontSize(10);
   doc.setFont('helvetica', 'italic');
   doc.setTextColor(128, 128, 128);
@@ -467,6 +596,74 @@ export const generatePDFReport = async (options: ReportOptions): Promise<void> =
   // Save the PDF
   doc.save(`QA_Report_${dayjs(data.date).format('YYYY-MM-DD')}.pdf`);
 };
+
+// Helper function to group data by category
+function groupDataByCategory(data: QualityData[], category: keyof QualityData): { [key: string]: QualityData[] } {
+  const groups: { [key: string]: QualityData[] } = {};
+  
+  data.forEach(record => {
+    const key = (record[category] as string) || 'Unknown';
+    if (!groups[key]) {
+      groups[key] = [];
+    }
+    groups[key].push(record);
+  });
+  
+  return groups;
+}
+
+// Helper function to add category breakdown to PDF
+function addCategoryBreakdown(
+  doc: jsPDF, 
+  categoryName: string, 
+  groups: { [key: string]: QualityData[] }, 
+  yPosition: number,
+  margin: number,
+  pageWidth: number,
+  checkNewPage: (space: number) => boolean
+): number {
+  checkNewPage(60 + Object.keys(groups).length * 8);
+  
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Breakdown by ${categoryName}:`, margin, yPosition);
+  yPosition += 10;
+  
+  const headers = [categoryName, 'Count', 'GSM Avg', 'Thickness Avg', 'Tensile MD Avg', 'Tensile CD Avg', 'Bulk Avg', 'Brightness Avg'];
+  const rows: any[][] = [];
+  
+  Object.entries(groups).forEach(([category, records]) => {
+    const avgGsm = records.reduce((sum, r) => sum + r.gsm, 0) / records.length;
+    const avgThickness = records.reduce((sum, r) => sum + r.thickness, 0) / records.length;
+    const avgTensileMD = records.reduce((sum, r) => sum + r.tensileStrengthMD, 0) / records.length;
+    const avgTensileCD = records.reduce((sum, r) => sum + r.tensileStrengthCD, 0) / records.length;
+    const avgBulk = records.reduce((sum, r) => sum + r.bulk, 0) / records.length;
+    const avgBrightness = records.reduce((sum, r) => sum + r.brightness, 0) / records.length;
+    
+    rows.push([
+      category,
+      records.length.toString(),
+      avgGsm.toFixed(2),
+      avgThickness.toFixed(2),
+      avgTensileMD.toFixed(0),
+      avgTensileCD.toFixed(0),
+      avgBulk.toFixed(2),
+      avgBrightness.toFixed(1)
+    ]);
+  });
+  
+  autoTable(doc, {
+    head: [headers],
+    body: rows,
+    startY: yPosition,
+    theme: 'grid',
+    headStyles: { fillColor: [66, 66, 66], textColor: 255, fontSize: 10 },
+    bodyStyles: { fontSize: 9 },
+    margin: { left: margin, right: margin },
+  });
+  
+  return (doc as any).lastAutoTable.finalY + 15;
+}
 
 // Helper functions for performance calculations
 function calculatePerformance(value: number, lcl: number, ucl: number): string {

@@ -149,10 +149,34 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
   const handleDownloadReport = async () => {
     setDownloading(true);
     try {
+      // Check if we need breakdown (when showing aggregated data)
+      const needsBreakdown = selectedData.length > 1;
+      
+      // Filter historical data based on current filters
+      let filteredHistoricalData = data;
+      if (selectedShift !== 'all') {
+        filteredHistoricalData = filteredHistoricalData.filter(d => d.shift === selectedShift);
+      }
+      if (selectedQuality !== 'all') {
+        filteredHistoricalData = filteredHistoricalData.filter(d => d.quality === selectedQuality);
+      }
+      if (selectedGSM !== 'all') {
+        filteredHistoricalData = filteredHistoricalData.filter(d => d.gsmGrade === selectedGSM);
+      }
+      
       await generatePDFReport({ 
         data: displayData,
-        historicalData: data,
-        includeCharts: true
+        historicalData: filteredHistoricalData,
+        includeCharts: true,
+        breakdown: needsBreakdown ? {
+          allData: selectedData,
+          filters: {
+            date: selectedDate,
+            shift: selectedShift,
+            quality: selectedQuality,
+            gsmGrade: selectedGSM
+          }
+        } : undefined
       });
     } catch (error) {
       console.error('Error generating report:', error);
