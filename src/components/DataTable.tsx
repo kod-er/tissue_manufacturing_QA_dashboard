@@ -67,7 +67,9 @@ const DataTable: React.FC<DataTableProps> = ({ data, fileName }) => {
       'Tensile CD', 'Tensile CD LCL', 'Tensile CD UCL',
       'Bulk', 'Bulk LCL', 'Bulk UCL',
       'Brightness', 'Brightness LCL', 'Brightness UCL',
-      'Moisture', 'Moisture LCL', 'Moisture UCL'
+      'Moisture', 'Moisture LCL', 'Moisture UCL',
+      'Wet / Dry Tensile    (%)',
+      'Machine Creep %'
     ];
 
     const rows = filteredData.map(row => [
@@ -82,7 +84,9 @@ const DataTable: React.FC<DataTableProps> = ({ data, fileName }) => {
       row.tensileStrengthCD, row.tensileStrengthCDLcl, row.tensileStrengthCDUcl,
       row.bulk, row.bulkLcl, row.bulkUcl,
       row.brightness, row.brightnessLcl, row.brightnessUcl,
-      row.moistureContent, row.moistureContentLcl, row.moistureContentUcl
+      row.moistureContent, row.moistureContentLcl, row.moistureContentUcl,
+      row.wetDryTensileRatio || '',
+      row.machineCreepPercent || ''
     ]);
 
     const csvContent = [
@@ -209,6 +213,8 @@ const DataTable: React.FC<DataTableProps> = ({ data, fileName }) => {
               <TableCell align="center" colSpan={3}>Bulk (cm³/g)</TableCell>
               <TableCell align="center" colSpan={3}>Brightness (%)</TableCell>
               <TableCell align="center" colSpan={3}>Moisture (%)</TableCell>
+              <TableCell align="center">Wet / Dry Tensile    (%)</TableCell>
+              <TableCell align="center">Machine Creep %</TableCell>
             </TableRow>
             <TableRow>
               <TableCell />
@@ -223,6 +229,8 @@ const DataTable: React.FC<DataTableProps> = ({ data, fileName }) => {
                   <TableCell align="center">UCL</TableCell>
                 </React.Fragment>
               ))}
+              <TableCell />
+              <TableCell />
             </TableRow>
           </TableHead>
           <TableBody>
@@ -277,6 +285,9 @@ const DataTable: React.FC<DataTableProps> = ({ data, fileName }) => {
                   </TableCell>
                   <TableCell align="center">{row.moistureContentLcl.toFixed(2)}</TableCell>
                   <TableCell align="center">{row.moistureContentUcl.toFixed(2)}</TableCell>
+                  
+                  <TableCell align="center">{row.wetDryTensileRatio ? row.wetDryTensileRatio.toFixed(2) : '-'}</TableCell>
+                  <TableCell align="center">{row.machineCreepPercent ? row.machineCreepPercent.toFixed(2) : '-'}</TableCell>
                 </TableRow>
               ))}
           </TableBody>

@@ -40,7 +40,7 @@ export const columnMappings: ColumnMapping = {
   // Additional Strength Metrics
   stretchElongation: ['Stretch / Elongation %', 'Stretch %', 'Elongation %', 'Stretch/Elongation', 'Elongation'],
   wetTensile: ['Wet Tensile gf/50mm', 'Wet Tensile', 'Wet Strength', 'Wet_Tensile'],
-  wetDryTensileRatio: ['Wet / Dry Tensile (%)', 'Wet/Dry Tensile %', 'Wet Dry Ratio', 'Wet_Dry_Ratio'],
+  wetDryTensileRatio: ['Wet / Dry Tensile    (%)', 'Wet / Dry Tensile (%)', 'Wet/Dry Tensile %', 'Wet Dry Ratio', 'Wet_Dry_Ratio'],
   grossMeanStrength: ['Gross Mean Strength', 'Mean Strength', 'Avg Strength', 'Gross_Mean_Strength'],
   machineCreepPercent: ['Macine Crrep %', 'Machine Creep %', 'Creep %', 'Machine_Creep'],
   

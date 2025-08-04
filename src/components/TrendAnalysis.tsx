@@ -49,6 +49,8 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
     { key: 'bulk', label: 'Bulk', unit: 'cm³/g' },
     { key: 'brightness', label: 'Brightness', unit: '%' },
     { key: 'moistureContent', label: 'Moisture', unit: '%' },
+    { key: 'wetDryTensileRatio', label: 'Wet / Dry Tensile', unit: '%' },
+    { key: 'machineCreepPercent', label: 'Machine Creep', unit: '%' },
   ];
 
   // Filter data based on shift, quality, and GSM
