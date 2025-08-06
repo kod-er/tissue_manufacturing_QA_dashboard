@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Paper, Typography, Box, ToggleButton, ToggleButtonGroup, IconButton, Tooltip as MuiTooltip, TextField, MenuItem } from '@mui/material';
 import { Download as DownloadIcon } from '@mui/icons-material';
 import {
@@ -13,12 +13,28 @@ import {
 } from 'recharts';
 import dayjs from 'dayjs';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
+import isoWeek from 'dayjs/plugin/isoWeek';
 import { QualityData } from '../types';
 import { downloadChartAsImage } from '../utils/chartExporter';
 
 dayjs.extend(weekOfYear);
+dayjs.extend(isoWeek);
 
 const CHART_COLORS = ['#2196f3', '#ff5722', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#795548', '#607d8b'];
+
+// Helper function to get week of month
+const getWeekOfMonth = (date: dayjs.Dayjs): number => {
+  const firstDay = date.startOf('month');
+  const weekOfYear = date.week();
+  const firstWeekOfMonth = firstDay.week();
+  
+  // Handle year boundary (December -> January)
+  if (date.month() === 0 && firstWeekOfMonth > 50) {
+    return weekOfYear + 1;
+  }
+  
+  return weekOfYear - firstWeekOfMonth + 1;
+};
 
 interface TrendAnalysisProps {
   data: QualityData[];
@@ -32,6 +48,14 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
   const [shiftFilter, setShiftFilter] = useState<string>('all');
   const [qualityFilter, setQualityFilter] = useState<string>('all');
   const [gsmFilter, setGsmFilter] = useState<string>('all');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  
+  // Clear date filters when changing view mode
+  useEffect(() => {
+    setStartDate('');
+    setEndDate('');
+  }, [viewMode]);
   
   // Get available shifts, qualities, and GSM grades
   const availableShifts = Array.from(new Set(data.map(d => d.shift).filter(Boolean)));
@@ -57,7 +81,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
     { key: 'map', label: 'MAP', unit: '' },
   ];
 
-  // Filter data based on shift, quality, and GSM
+  // Filter data based on shift, quality, GSM, and date range
   const filteredData = useMemo(() => {
     let filtered = data;
     if (shiftFilter !== 'all') {
@@ -69,8 +93,14 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
     if (gsmFilter !== 'all') {
       filtered = filtered.filter(d => d.gsmGrade === gsmFilter);
     }
+    if (startDate) {
+      filtered = filtered.filter(d => dayjs(d.date).isAfter(dayjs(startDate).subtract(1, 'day')));
+    }
+    if (endDate) {
+      filtered = filtered.filter(d => dayjs(d.date).isBefore(dayjs(endDate).add(1, 'day')));
+    }
     return filtered;
-  }, [data, shiftFilter, qualityFilter, gsmFilter]);
+  }, [data, shiftFilter, qualityFilter, gsmFilter, startDate, endDate]);
 
   const aggregatedData = useMemo(() => {
     if (viewMode === 'hourly') {
@@ -103,7 +133,10 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
       if (viewMode === 'daily') {
         key = d.date; // Group by date for daily aggregation
       } else if (viewMode === 'weekly') {
-        key = `${dayjs(d.date).year()}-W${dayjs(d.date).week()}`;
+        const dateObj = dayjs(d.date);
+        const monthName = dateObj.format('MMMM');
+        const weekNum = getWeekOfMonth(dateObj);
+        key = `${dateObj.format('YYYY-MM')}-W${weekNum}|${monthName}-W${weekNum}`;
       } else {
         key = dayjs(d.date).format('YYYY-MM');
       }
@@ -116,10 +149,12 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
 
     return Object.entries(grouped)
       .map(([key, values]) => {
+        const sortKey = viewMode === 'weekly' ? key.split('|')[0] : key;
         const baseData: any = {
           date: viewMode === 'daily' ? dayjs(key).format('MM/DD') : 
-                viewMode === 'weekly' ? key : 
+                viewMode === 'weekly' ? key.split('|')[1] : 
                 dayjs(key).format('MMM YYYY'),
+          sortKey: sortKey,
           recordCount: values.length,
         };
         
@@ -141,6 +176,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
         
         return baseData;
       })
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
       .slice(0, viewMode === 'daily' ? 30 : viewMode === 'weekly' ? 12 : 6)
       .reverse();
   }, [filteredData, viewMode, selectedMetrics]);
@@ -232,15 +268,144 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
             ))}
           </TextField>
         )}
+        
+        {viewMode === 'monthly' ? (
+          <>
+            <TextField
+              type="month"
+              size="small"
+              value={startDate ? dayjs(startDate).format('YYYY-MM') : ''}
+              onChange={(e) => setStartDate(e.target.value ? `${e.target.value}-01` : '')}
+              sx={{ minWidth: 150 }}
+              label="Start Month"
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ max: endDate ? dayjs(endDate).format('YYYY-MM') : dayjs().format('YYYY-MM') }}
+            />
+            
+            <TextField
+              type="month"
+              size="small"
+              value={endDate ? dayjs(endDate).format('YYYY-MM') : ''}
+              onChange={(e) => setEndDate(e.target.value ? dayjs(e.target.value).endOf('month').format('YYYY-MM-DD') : '')}
+              sx={{ minWidth: 150 }}
+              label="End Month"
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ 
+                min: startDate ? dayjs(startDate).format('YYYY-MM') : undefined,
+                max: dayjs().format('YYYY-MM')
+              }}
+            />
+          </>
+        ) : viewMode === 'weekly' ? (
+          <>
+            <TextField
+              type="week"
+              size="small"
+              value={startDate ? `${dayjs(startDate).format('YYYY')}-W${dayjs(startDate).isoWeek().toString().padStart(2, '0')}` : ''}
+              onChange={(e) => {
+                if (e.target.value) {
+                  const [year, week] = e.target.value.split('-W');
+                  const date = dayjs().year(parseInt(year)).isoWeek(parseInt(week)).startOf('isoWeek');
+                  setStartDate(date.format('YYYY-MM-DD'));
+                } else {
+                  setStartDate('');
+                }
+              }}
+              sx={{ minWidth: 150 }}
+              label="Start Week"
+              InputLabelProps={{ shrink: true }}
+            />
+            
+            <TextField
+              type="week"
+              size="small"
+              value={endDate ? `${dayjs(endDate).format('YYYY')}-W${dayjs(endDate).isoWeek().toString().padStart(2, '0')}` : ''}
+              onChange={(e) => {
+                if (e.target.value) {
+                  const [year, week] = e.target.value.split('-W');
+                  const date = dayjs().year(parseInt(year)).isoWeek(parseInt(week)).endOf('isoWeek');
+                  setEndDate(date.format('YYYY-MM-DD'));
+                } else {
+                  setEndDate('');
+                }
+              }}
+              sx={{ minWidth: 150 }}
+              label="End Week"
+              InputLabelProps={{ shrink: true }}
+            />
+          </>
+        ) : viewMode === 'hourly' ? (
+          <TextField
+            type="date"
+            size="small"
+            value={startDate}
+            onChange={(e) => {
+              setStartDate(e.target.value);
+              setEndDate(e.target.value); // Set end date same as start date for single day
+            }}
+            sx={{ minWidth: 150 }}
+            label="Select Date"
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ max: dayjs().format('YYYY-MM-DD') }}
+          />
+        ) : (
+          <>
+            <TextField
+              type="date"
+              size="small"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              sx={{ minWidth: 150 }}
+              label="Start Date"
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ max: endDate || dayjs().format('YYYY-MM-DD') }}
+            />
+            
+            <TextField
+              type="date"
+              size="small"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              sx={{ minWidth: 150 }}
+              label="End Date"
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ 
+                min: startDate,
+                max: dayjs().format('YYYY-MM-DD')
+              }}
+            />
+          </>
+        )}
+        
+        {(shiftFilter !== 'all' || qualityFilter !== 'all' || gsmFilter !== 'all' || startDate || endDate) && (
+          <MuiTooltip title="Clear all filters">
+            <IconButton 
+              size="small" 
+              onClick={() => {
+                setShiftFilter('all');
+                setQualityFilter('all');
+                setGsmFilter('all');
+                setStartDate('');
+                setEndDate('');
+              }}
+              sx={{ ml: 'auto' }}
+            >
+              ✕
+            </IconButton>
+          </MuiTooltip>
+        )}
       </Box>
 
-      {(shiftFilter !== 'all' || qualityFilter !== 'all' || gsmFilter !== 'all') && (
+      {(shiftFilter !== 'all' || qualityFilter !== 'all' || gsmFilter !== 'all' || startDate || endDate) && (
         <Box sx={{ mb: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
           <Typography variant="body2">
             Analyzing {filteredData.length} records
             {shiftFilter !== 'all' && ` for shift: ${shiftFilter}`}
             {qualityFilter !== 'all' && ` with quality: ${qualityFilter}`}
             {gsmFilter !== 'all' && ` with GSM: ${gsmFilter}`}
+            {viewMode === 'hourly' && startDate && ` on ${dayjs(startDate).format('MMM DD, YYYY')}`}
+            {viewMode !== 'hourly' && startDate && ` from ${dayjs(startDate).format('MMM DD, YYYY')}`}
+            {viewMode !== 'hourly' && endDate && startDate !== endDate && ` to ${dayjs(endDate).format('MMM DD, YYYY')}`}
           </Typography>
         </Box>
       )}
