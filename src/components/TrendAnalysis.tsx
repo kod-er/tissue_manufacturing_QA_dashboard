@@ -107,7 +107,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
       // Show individual records with time
       return filteredData.slice(0, 50).reverse().map(d => {
         const baseData: any = {
-          date: d.time ? `${dayjs(d.date).format('MM/DD')} ${d.time}` : dayjs(d.date).format('MM/DD HH:mm'),
+          date: d.time ? `${dayjs(d.date).format('MMM D')} ${d.time}` : dayjs(d.date).format('MMM D, h:mm A'),
           shift: d.shift,
           quality: d.quality,
           gsmGrade: d.gsmGrade,
@@ -151,7 +151,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
       .map(([key, values]) => {
         const sortKey = viewMode === 'weekly' ? key.split('|')[0] : key;
         const baseData: any = {
-          date: viewMode === 'daily' ? dayjs(key).format('MM/DD') : 
+          date: viewMode === 'daily' ? dayjs(key).format('MMM D') : 
                 viewMode === 'weekly' ? key.split('|')[1] : 
                 dayjs(key).format('MMM YYYY'),
           sortKey: sortKey,
@@ -459,9 +459,15 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
       <Box sx={{ height: 400 }} id="trend-chart">
         {selectedMetrics.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={aggregatedData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+            <LineChart data={aggregatedData} margin={{ top: 5, right: 30, left: 20, bottom: viewMode === 'hourly' ? 50 : 5 }}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
+            <XAxis 
+              dataKey="date" 
+              tick={{ fontSize: 12 }}
+              angle={viewMode === 'hourly' ? -45 : 0}
+              textAnchor={viewMode === 'hourly' ? 'end' : 'middle'}
+              height={viewMode === 'hourly' ? 60 : 30}
+            />
             <YAxis />
             <Tooltip 
               content={({ active, payload }) => {
