@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Paper, Typography, Box, ToggleButton, ToggleButtonGroup, IconButton, Tooltip as MuiTooltip, TextField, MenuItem, Switch, FormControlLabel } from '@mui/material';
+import { Paper, Typography, Box, ToggleButton, ToggleButtonGroup, IconButton, Tooltip as MuiTooltip, TextField, MenuItem } from '@mui/material';
 import { Download as DownloadIcon } from '@mui/icons-material';
 import {
   LineChart,
@@ -9,8 +9,7 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer,
-  ReferenceLine
+  ResponsiveContainer
 } from 'recharts';
 import dayjs from 'dayjs';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
@@ -18,6 +17,8 @@ import { QualityData } from '../types';
 import { downloadChartAsImage } from '../utils/chartExporter';
 
 dayjs.extend(weekOfYear);
+
+const CHART_COLORS = ['#2196f3', '#ff5722', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#795548', '#607d8b'];
 
 interface TrendAnalysisProps {
   data: QualityData[];
@@ -27,9 +28,7 @@ type ViewMode = 'hourly' | 'daily' | 'weekly' | 'monthly';
 
 const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
-  const [selectedMetric, setSelectedMetric] = useState('gsm');
-  const [secondMetric, setSecondMetric] = useState<string | null>(null);
-  const [compareMode, setCompareMode] = useState(false);
+  const [selectedMetrics, setSelectedMetrics] = useState<string[]>(['gsm']);
   const [shiftFilter, setShiftFilter] = useState<string>('all');
   const [qualityFilter, setQualityFilter] = useState<string>('all');
   const [gsmFilter, setGsmFilter] = useState<string>('all');
@@ -51,6 +50,11 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
     { key: 'moistureContent', label: 'Moisture', unit: '%' },
     { key: 'wetDryTensileRatio', label: 'Wet / Dry Tensile', unit: '%' },
     { key: 'machineCreepPercent', label: 'Machine Creep', unit: '%' },
+    { key: 'coating', label: 'Coating', unit: '' },
+    { key: 'swOsr', label: 'SW OSR', unit: '' },
+    { key: 'hwSr', label: 'HW SR', unit: '' },
+    { key: 'release', label: 'Release', unit: '' },
+    { key: 'map', label: 'MAP', unit: '' },
   ];
 
   // Filter data based on shift, quality, and GSM
@@ -74,19 +78,19 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
       return filteredData.slice(0, 50).reverse().map(d => {
         const baseData: any = {
           date: d.time ? `${dayjs(d.date).format('MM/DD')} ${d.time}` : dayjs(d.date).format('MM/DD HH:mm'),
-          value: d[selectedMetric] as number,
-          lcl: d[`${selectedMetric}Lcl`] as number,
-          ucl: d[`${selectedMetric}Ucl`] as number,
           shift: d.shift,
           quality: d.quality,
           gsmGrade: d.gsmGrade,
         };
         
-        if (compareMode && secondMetric) {
-          baseData.value2 = d[secondMetric] as number;
-          baseData.lcl2 = d[`${secondMetric}Lcl`] as number;
-          baseData.ucl2 = d[`${secondMetric}Ucl`] as number;
-        }
+        // Add data for each selected metric
+        selectedMetrics.forEach((metric, index) => {
+          const value = d[metric];
+          // Convert string values to numbers if possible, otherwise use 0
+          baseData[`value${index + 1}`] = typeof value === 'number' ? value : (parseFloat(value as string) || 0);
+          baseData[`lcl${index + 1}`] = d[`${metric}Lcl`] as number || undefined;
+          baseData[`ucl${index + 1}`] = d[`${metric}Ucl`] as number || undefined;
+        });
         
         return baseData;
       });
@@ -112,38 +116,41 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
 
     return Object.entries(grouped)
       .map(([key, values]) => {
-        const avgValue = values.reduce((sum, v) => sum + (v[selectedMetric] as number), 0) / values.length;
-        const lcl = values[0][`${selectedMetric}Lcl`] as number;
-        const ucl = values[0][`${selectedMetric}Ucl`] as number;
-        
         const baseData: any = {
           date: viewMode === 'daily' ? dayjs(key).format('MM/DD') : 
                 viewMode === 'weekly' ? key : 
                 dayjs(key).format('MMM YYYY'),
-          value: avgValue,
-          lcl,
-          ucl,
           recordCount: values.length,
         };
         
-        if (compareMode && secondMetric) {
-          const avgValue2 = values.reduce((sum, v) => sum + (v[secondMetric] as number), 0) / values.length;
-          baseData.value2 = avgValue2;
-          baseData.lcl2 = values[0][`${secondMetric}Lcl`] as number;
-          baseData.ucl2 = values[0][`${secondMetric}Ucl`] as number;
-        }
+        // Calculate average for each selected metric
+        selectedMetrics.forEach((metric, index) => {
+          const numericValues = values.map(v => {
+            const val = v[metric];
+            return typeof val === 'number' ? val : (parseFloat(val as string) || 0);
+          }).filter(v => v !== 0); // Filter out zeros from non-numeric conversions
+          
+          const avgValue = numericValues.length > 0 
+            ? numericValues.reduce((sum, v) => sum + v, 0) / numericValues.length 
+            : 0;
+          
+          baseData[`value${index + 1}`] = avgValue;
+          baseData[`lcl${index + 1}`] = values[0][`${metric}Lcl`] as number || undefined;
+          baseData[`ucl${index + 1}`] = values[0][`${metric}Ucl`] as number || undefined;
+        });
         
         return baseData;
       })
       .slice(0, viewMode === 'daily' ? 30 : viewMode === 'weekly' ? 12 : 6)
       .reverse();
-  }, [filteredData, viewMode, selectedMetric, compareMode, secondMetric]);
+  }, [filteredData, viewMode, selectedMetrics]);
 
-  const currentMetric = metrics.find(m => m.key === selectedMetric)!;
-  const secondMetricInfo = secondMetric ? metrics.find(m => m.key === secondMetric) : null;
+  const selectedMetricsInfo = selectedMetrics.map(metricKey => 
+    metrics.find(m => m.key === metricKey)!
+  );
 
   const handleDownloadChart = async () => {
-    await downloadChartAsImage('trend-chart', `trend-analysis-${selectedMetric}-${viewMode}.png`);
+    await downloadChartAsImage('trend-chart', `trend-analysis-${selectedMetrics.join('-')}-${viewMode}.png`);
   };
 
   return (
@@ -240,30 +247,36 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
 
       <Box sx={{ mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-          <Typography variant="subtitle1">Primary Metric:</Typography>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={compareMode}
-                onChange={(e) => {
-                  setCompareMode(e.target.checked);
-                  if (!e.target.checked) {
-                    setSecondMetric(null);
-                  }
-                }}
-              />
-            }
-            label="Compare Two Metrics"
-          />
+          <Typography variant="subtitle1">
+            Select Metrics: {selectedMetrics.length}/4 selected
+          </Typography>
+          {selectedMetrics.length > 0 && (
+            <MuiTooltip title="Clear all selections">
+              <IconButton 
+                size="small"
+                onClick={() => setSelectedMetrics([])}
+                sx={{ ml: 'auto' }}
+              >
+                ✕
+              </IconButton>
+            </MuiTooltip>
+          )}
         </Box>
         
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {metrics.map(metric => (
             <ToggleButton
               key={metric.key}
               value={metric.key}
-              selected={selectedMetric === metric.key}
-              onChange={() => setSelectedMetric(metric.key)}
+              selected={selectedMetrics.includes(metric.key)}
+              onChange={() => {
+                if (selectedMetrics.includes(metric.key)) {
+                  setSelectedMetrics(selectedMetrics.filter(m => m !== metric.key));
+                } else if (selectedMetrics.length < 4) {
+                  setSelectedMetrics([...selectedMetrics, metric.key]);
+                }
+              }}
+              disabled={!selectedMetrics.includes(metric.key) && selectedMetrics.length >= 4}
               size="small"
             >
               {metric.label}
@@ -271,45 +284,20 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
           ))}
         </Box>
         
-        {compareMode && (
-          <>
-            <Typography variant="subtitle1" sx={{ mb: 1 }}>Secondary Metric:</Typography>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              {metrics
-                .filter(m => m.key !== selectedMetric)
-                .map(metric => (
-                  <ToggleButton
-                    key={metric.key}
-                    value={metric.key}
-                    selected={secondMetric === metric.key}
-                    onChange={() => setSecondMetric(metric.key)}
-                    size="small"
-                  >
-                    {metric.label}
-                  </ToggleButton>
-                ))}
-            </Box>
-          </>
+        {selectedMetrics.length === 0 && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Please select at least one metric to display
+          </Typography>
         )}
       </Box>
 
       <Box sx={{ height: 400 }} id="trend-chart">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={aggregatedData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+        {selectedMetrics.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={aggregatedData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="date" />
-            <YAxis 
-              label={{ value: currentMetric.unit, angle: -90, position: 'insideLeft' }} 
-              stroke="#2196f3"
-            />
-            {compareMode && secondMetric && (
-              <YAxis 
-                yAxisId="right" 
-                orientation="right" 
-                label={{ value: secondMetricInfo?.unit || '', angle: 90, position: 'insideRight' }}
-                stroke="#ff5722"
-              />
-            )}
+            <YAxis />
             <Tooltip 
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
@@ -317,28 +305,24 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
                   return (
                     <Box sx={{ p: 1.5, bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
                       <Typography variant="body2" fontWeight="bold">{data.date}</Typography>
-                      <Typography variant="body2" color="primary">
-                        {currentMetric.label}: {payload[0]?.value?.toFixed(2)} {currentMetric.unit}
-                      </Typography>
-                      {data.lcl && data.ucl && (
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          Spec: {data.lcl.toFixed(2)} - {data.ucl.toFixed(2)}
-                        </Typography>
-                      )}
-                      {compareMode && secondMetric && payload[1] && (
-                        <>
-                          <Typography variant="body2" sx={{ color: '#ff5722', mt: 1 }}>
-                            {secondMetricInfo?.label}: {payload[1]?.value?.toFixed(2)} {secondMetricInfo?.unit}
-                          </Typography>
-                          {data.lcl2 && data.ucl2 && (
-                            <Typography variant="caption" color="text.secondary" display="block">
-                              Spec: {data.lcl2.toFixed(2)} - {data.ucl2.toFixed(2)}
+                      {payload.map((entry: any, index: number) => {
+                        const metricIndex = parseInt(entry.dataKey.replace('value', '')) - 1;
+                        const metricInfo = selectedMetricsInfo[metricIndex];
+                        return (
+                          <Box key={entry.dataKey} sx={{ mt: index > 0 ? 1 : 0 }}>
+                            <Typography variant="body2" sx={{ color: entry.color }}>
+                              {metricInfo?.label}: {entry.value?.toFixed(2)} {metricInfo?.unit}
                             </Typography>
-                          )}
-                        </>
-                      )}
+                            {data[`lcl${metricIndex + 1}`] && data[`ucl${metricIndex + 1}`] && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                Spec: {data[`lcl${metricIndex + 1}`].toFixed(2)} - {data[`ucl${metricIndex + 1}`].toFixed(2)}
+                              </Typography>
+                            )}
+                          </Box>
+                        );
+                      })}
                       {viewMode === 'hourly' && data.shift && (
-                        <Typography variant="caption" display="block">
+                        <Typography variant="caption" display="block" sx={{ mt: 1 }}>
                           Shift: {data.shift}
                         </Typography>
                       )}
@@ -365,44 +349,26 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
             />
             <Legend />
             
-            {aggregatedData[0]?.lcl !== undefined && (
-              <ReferenceLine
-                y={aggregatedData[0]?.lcl}
-                stroke="#ff9800"
-                strokeDasharray="3 3"
-                label="LCL"
-              />
-            )}
-            {aggregatedData[0]?.ucl !== undefined && (
-              <ReferenceLine
-                y={aggregatedData[0]?.ucl}
-                stroke="#ff9800"
-                strokeDasharray="3 3"
-                label="UCL"
-              />
-            )}
-            
-            <Line
-              type="monotone"
-              dataKey="value"
-              stroke="#2196f3"
-              strokeWidth={2}
-              dot={{ fill: '#2196f3' }}
-              name={currentMetric.label}
-            />
-            {compareMode && secondMetric && (
+            {selectedMetrics.map((metric, index) => (
               <Line
+                key={metric}
                 type="monotone"
-                dataKey="value2"
-                stroke="#ff5722"
+                dataKey={`value${index + 1}`}
+                stroke={CHART_COLORS[index]}
                 strokeWidth={2}
-                dot={{ fill: '#ff5722' }}
-                name={secondMetricInfo?.label || ''}
-                yAxisId="right"
+                dot={{ fill: CHART_COLORS[index], r: 3 }}
+                name={selectedMetricsInfo[index]?.label || metric}
               />
-            )}
+            ))}
           </LineChart>
         </ResponsiveContainer>
+      ) : (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+          <Typography variant="body1" color="text.secondary">
+            Select one or more metrics to display the trend chart
+          </Typography>
+        </Box>
+      )}
       </Box>
     </Paper>
   );
