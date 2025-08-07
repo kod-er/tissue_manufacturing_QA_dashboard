@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Paper, Typography, Box, ToggleButton, ToggleButtonGroup, IconButton, Tooltip as MuiTooltip, TextField, MenuItem } from '@mui/material';
-import { Download as DownloadIcon } from '@mui/icons-material';
+import { Paper, Typography, Box, ToggleButton, ToggleButtonGroup, IconButton, Tooltip as MuiTooltip, TextField, MenuItem, Card, CardContent, Button, ButtonGroup, Switch, FormControlLabel } from '@mui/material';
+import { TrendingUp as TrendingUpIcon, TrendingDown as TrendingDownIcon, TrendingFlat as TrendingFlatIcon, TableChart as TableChartIcon, Image as ImageIcon } from '@mui/icons-material';
 import {
   LineChart,
   Line,
@@ -9,7 +9,8 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer
+  ResponsiveContainer,
+  ReferenceLine
 } from 'recharts';
 import dayjs from 'dayjs';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
@@ -36,6 +37,26 @@ const getWeekOfMonth = (date: dayjs.Dayjs): number => {
   return weekOfYear - firstWeekOfMonth + 1;
 };
 
+// Calculate statistics for a metric
+const calculateStatistics = (data: number[]) => {
+  if (data.length === 0) return null;
+  
+  const sorted = [...data].sort((a, b) => a - b);
+  const sum = data.reduce((acc, val) => acc + val, 0);
+  const mean = sum / data.length;
+  const variance = data.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / data.length;
+  const stdDev = Math.sqrt(variance);
+  
+  return {
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    mean,
+    stdDev,
+    count: data.length,
+    median: sorted[Math.floor(sorted.length / 2)]
+  };
+};
+
 interface TrendAnalysisProps {
   data: QualityData[];
 }
@@ -50,6 +71,9 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
   const [gsmFilter, setGsmFilter] = useState<string>('all');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [showMovingAverage, setShowMovingAverage] = useState(false);
+  const [movingAveragePeriod, setMovingAveragePeriod] = useState(7);
+  const [showControlLimits, setShowControlLimits] = useState(false);
   
   // Clear date filters when changing view mode
   useEffect(() => {
@@ -181,12 +205,156 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
       .reverse();
   }, [filteredData, viewMode, selectedMetrics]);
 
+  // Calculate moving average data
+  const movingAverageData = useMemo(() => {
+    if (!showMovingAverage || aggregatedData.length === 0) return [];
+    
+    return aggregatedData.map((point, index) => {
+      const maData: any = { date: point.date };
+      
+      selectedMetrics.forEach((metric, metricIndex) => {
+        const dataKey = `value${metricIndex + 1}`;
+        const maKey = `ma${metricIndex + 1}`;
+        
+        // Calculate moving average
+        const startIdx = Math.max(0, index - movingAveragePeriod + 1);
+        const relevantPoints = aggregatedData.slice(startIdx, index + 1);
+        const sum = relevantPoints.reduce((acc, p) => acc + (p[dataKey] || 0), 0);
+        const avg = sum / relevantPoints.length;
+        
+        maData[maKey] = avg;
+      });
+      
+      return maData;
+    });
+  }, [aggregatedData, showMovingAverage, movingAveragePeriod, selectedMetrics]);
+
   const selectedMetricsInfo = selectedMetrics.map(metricKey => 
     metrics.find(m => m.key === metricKey)!
   );
 
+  // Calculate statistics for selected metrics
+  const metricsStatistics = useMemo(() => {
+    return selectedMetrics.map(metricKey => {
+      const values = filteredData
+        .map(d => {
+          const val = d[metricKey];
+          return typeof val === 'number' ? val : parseFloat(val as string);
+        })
+        .filter(v => !isNaN(v) && v !== null);
+      
+      const stats = calculateStatistics(values);
+      const metricInfo = metrics.find(m => m.key === metricKey);
+      
+      // Calculate percentage within spec limits if LCL/UCL exist
+      let withinSpec = null;
+      if (stats && filteredData.length > 0 && filteredData[0][`${metricKey}Lcl`] !== undefined) {
+        const lcl = filteredData[0][`${metricKey}Lcl`] as number;
+        const ucl = filteredData[0][`${metricKey}Ucl`] as number;
+        const withinCount = values.filter(v => v >= lcl && v <= ucl).length;
+        withinSpec = (withinCount / values.length) * 100;
+      }
+      
+      return {
+        metric: metricKey,
+        label: metricInfo?.label || metricKey,
+        unit: metricInfo?.unit || '',
+        stats,
+        withinSpec
+      };
+    });
+  }, [filteredData, selectedMetrics]);
+
   const handleDownloadChart = async () => {
     await downloadChartAsImage('trend-chart', `trend-analysis-${selectedMetrics.join('-')}-${viewMode}.png`);
+  };
+
+  const handleExportCSV = () => {
+    if (filteredData.length === 0 || selectedMetrics.length === 0) return;
+    
+    // Create CSV headers
+    const headers = ['Date', 'Time', 'Shift', 'Quality', 'GSM Grade'];
+    selectedMetrics.forEach(metric => {
+      const metricInfo = metrics.find(m => m.key === metric);
+      const label = metricInfo?.label || metric;
+      headers.push(label);
+      if (filteredData[0][`${metric}Lcl`] !== undefined) {
+        headers.push(`${label} LCL`);
+        headers.push(`${label} UCL`);
+      }
+    });
+    
+    // Create CSV rows
+    const rows = filteredData.map(row => {
+      const csvRow = [
+        row.date,
+        row.time || '',
+        row.shift || '',
+        row.quality || '',
+        row.gsmGrade || ''
+      ];
+      
+      selectedMetrics.forEach(metric => {
+        const value = row[metric];
+        csvRow.push(typeof value === 'number' ? value.toString() : value as string || '');
+        
+        if (row[`${metric}Lcl`] !== undefined) {
+          csvRow.push(row[`${metric}Lcl`]?.toString() || '');
+          csvRow.push(row[`${metric}Ucl`]?.toString() || '');
+        }
+      });
+      
+      return csvRow;
+    });
+    
+    // Convert to CSV string
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+    
+    // Download CSV
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `trend-analysis-${selectedMetrics.join('-')}-${dayjs().format('YYYY-MM-DD')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleDatePreset = (preset: string) => {
+    const today = dayjs();
+    switch (preset) {
+      case 'today':
+        setStartDate(today.format('YYYY-MM-DD'));
+        setEndDate(today.format('YYYY-MM-DD'));
+        break;
+      case 'yesterday':
+        const yesterday = today.subtract(1, 'day');
+        setStartDate(yesterday.format('YYYY-MM-DD'));
+        setEndDate(yesterday.format('YYYY-MM-DD'));
+        break;
+      case 'last7days':
+        setStartDate(today.subtract(6, 'days').format('YYYY-MM-DD'));
+        setEndDate(today.format('YYYY-MM-DD'));
+        break;
+      case 'last30days':
+        setStartDate(today.subtract(29, 'days').format('YYYY-MM-DD'));
+        setEndDate(today.format('YYYY-MM-DD'));
+        break;
+      case 'thisMonth':
+        setStartDate(today.startOf('month').format('YYYY-MM-DD'));
+        setEndDate(today.format('YYYY-MM-DD'));
+        break;
+      case 'lastMonth':
+        const lastMonth = today.subtract(1, 'month');
+        setStartDate(lastMonth.startOf('month').format('YYYY-MM-DD'));
+        setEndDate(lastMonth.endOf('month').format('YYYY-MM-DD'));
+        break;
+    }
   };
 
   return (
@@ -195,11 +363,18 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
         <Typography variant="h5">
           Trend Analysis
         </Typography>
-        <MuiTooltip title="Download Chart">
-          <IconButton onClick={handleDownloadChart} color="primary">
-            <DownloadIcon />
-          </IconButton>
-        </MuiTooltip>
+        <Box>
+          <MuiTooltip title="Export Data as CSV">
+            <IconButton onClick={handleExportCSV} color="primary">
+              <TableChartIcon />
+            </IconButton>
+          </MuiTooltip>
+          <MuiTooltip title="Download Chart as Image">
+            <IconButton onClick={handleDownloadChart} color="primary">
+              <ImageIcon />
+            </IconButton>
+          </MuiTooltip>
+        </Box>
       </Box>
       
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
@@ -268,7 +443,24 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
             ))}
           </TextField>
         )}
-        
+      </Box>
+      
+      {/* Quick Date Presets */}
+      {viewMode !== 'monthly' && viewMode !== 'weekly' && (
+        <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+          <Typography variant="body2" sx={{ alignSelf: 'center', mr: 1 }}>Quick select:</Typography>
+          <ButtonGroup size="small" variant="outlined">
+            <Button onClick={() => handleDatePreset('today')}>Today</Button>
+            <Button onClick={() => handleDatePreset('yesterday')}>Yesterday</Button>
+            <Button onClick={() => handleDatePreset('last7days')}>Last 7 Days</Button>
+            <Button onClick={() => handleDatePreset('last30days')}>Last 30 Days</Button>
+            <Button onClick={() => handleDatePreset('thisMonth')}>This Month</Button>
+            <Button onClick={() => handleDatePreset('lastMonth')}>Last Month</Button>
+          </ButtonGroup>
+        </Box>
+      )}
+      
+      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
         {viewMode === 'monthly' ? (
           <>
             <TextField
@@ -454,12 +646,138 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
             Please select at least one metric to display
           </Typography>
         )}
+        
+        {/* Moving Average Controls */}
+        {selectedMetrics.length > 0 && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showMovingAverage}
+                  onChange={(e) => setShowMovingAverage(e.target.checked)}
+                  size="small"
+                />
+              }
+              label="Show Moving Average"
+            />
+            {showMovingAverage && (
+              <TextField
+                select
+                size="small"
+                value={movingAveragePeriod}
+                onChange={(e) => setMovingAveragePeriod(Number(e.target.value))}
+                sx={{ minWidth: 100 }}
+                label="Period"
+              >
+                <MenuItem value={3}>3 points</MenuItem>
+                <MenuItem value={5}>5 points</MenuItem>
+                <MenuItem value={7}>7 points</MenuItem>
+                <MenuItem value={10}>10 points</MenuItem>
+                <MenuItem value={14}>14 points</MenuItem>
+              </TextField>
+            )}
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showControlLimits}
+                  onChange={(e) => setShowControlLimits(e.target.checked)}
+                  size="small"
+                />
+              }
+              label="Show Control Limits"
+            />
+          </Box>
+        )}
       </Box>
+
+      {/* Statistical Summary Cards */}
+      {selectedMetrics.length > 0 && metricsStatistics.some(stat => stat.stats) && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+          {metricsStatistics.map((metricStat) => {
+            if (!metricStat.stats) return null;
+            const { stats, label, unit, withinSpec } = metricStat;
+            
+            // Determine trend
+            const values = filteredData
+              .map(d => {
+                const val = d[metricStat.metric];
+                return typeof val === 'number' ? val : parseFloat(val as string);
+              })
+              .filter(v => !isNaN(v));
+            
+            let trend = 'flat';
+            if (values.length > 2) {
+              const firstHalf = values.slice(0, Math.floor(values.length / 2));
+              const secondHalf = values.slice(Math.floor(values.length / 2));
+              const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+              const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+              const diff = ((secondAvg - firstAvg) / firstAvg) * 100;
+              
+              if (diff > 2) trend = 'up';
+              else if (diff < -2) trend = 'down';
+            }
+            
+            return (
+              <Box key={metricStat.metric} sx={{ flex: '1 1 300px', minWidth: 250 }}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        {label}
+                      </Typography>
+                      {trend === 'up' && <TrendingUpIcon color="success" fontSize="small" />}
+                      {trend === 'down' && <TrendingDownIcon color="error" fontSize="small" />}
+                      {trend === 'flat' && <TrendingFlatIcon color="action" fontSize="small" />}
+                    </Box>
+                    
+                    <Typography variant="h6" gutterBottom>
+                      {stats.mean.toFixed(2)} {unit}
+                    </Typography>
+                    
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Min: {stats.min.toFixed(2)}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Max: {stats.max.toFixed(2)}
+                      </Typography>
+                    </Box>
+                    
+                    <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                      Std Dev: {stats.stdDev.toFixed(2)}
+                    </Typography>
+                    
+                    {withinSpec !== null && (
+                      <Typography 
+                        variant="caption" 
+                        display="block" 
+                        sx={{ 
+                          mt: 0.5,
+                          color: withinSpec >= 95 ? 'success.main' : withinSpec >= 90 ? 'warning.main' : 'error.main'
+                        }}
+                      >
+                        {withinSpec.toFixed(1)}% within spec
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              </Box>
+            );
+          })}
+        </Box>
+      )}
 
       <Box sx={{ height: 400 }} id="trend-chart">
         {selectedMetrics.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={aggregatedData} margin={{ top: 5, right: 30, left: 20, bottom: viewMode === 'hourly' ? 50 : 5 }}>
+            <LineChart 
+              data={showMovingAverage ? 
+                aggregatedData.map((point, index) => ({
+                  ...point,
+                  ...movingAverageData[index]
+                })) : aggregatedData
+              } 
+              margin={{ top: 5, right: 30, left: 20, bottom: viewMode === 'hourly' ? 50 : 5 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis 
               dataKey="date" 
@@ -531,6 +849,49 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
                 name={selectedMetricsInfo[index]?.label || metric}
               />
             ))}
+            
+            {/* Moving Average Lines */}
+            {showMovingAverage && selectedMetrics.map((metric, index) => (
+              <Line
+                key={`ma-${metric}`}
+                type="monotone"
+                dataKey={`ma${index + 1}`}
+                stroke={CHART_COLORS[index]}
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={false}
+                name={`${selectedMetricsInfo[index]?.label || metric} (MA-${movingAveragePeriod})`}
+              />
+            ))}
+            
+            {/* Control Limits */}
+            {showControlLimits && selectedMetrics.map((metric, index) => {
+              const lcl = filteredData.length > 0 ? filteredData[0][`${metric}Lcl`] as number : null;
+              const ucl = filteredData.length > 0 ? filteredData[0][`${metric}Ucl`] as number : null;
+              
+              return (
+                <React.Fragment key={`limits-${metric}`}>
+                  {lcl !== null && lcl !== undefined && (
+                    <ReferenceLine
+                      y={lcl}
+                      stroke={CHART_COLORS[index]}
+                      strokeDasharray="3 3"
+                      strokeWidth={1}
+                      label={{ value: `LCL (${selectedMetricsInfo[index]?.label})`, position: 'left' }}
+                    />
+                  )}
+                  {ucl !== null && ucl !== undefined && (
+                    <ReferenceLine
+                      y={ucl}
+                      stroke={CHART_COLORS[index]}
+                      strokeDasharray="3 3"
+                      strokeWidth={1}
+                      label={{ value: `UCL (${selectedMetricsInfo[index]?.label})`, position: 'left' }}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
           </LineChart>
         </ResponsiveContainer>
       ) : (
