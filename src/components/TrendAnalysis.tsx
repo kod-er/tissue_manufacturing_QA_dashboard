@@ -104,6 +104,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
     { key: 'hwSr', label: 'HW SR', unit: '' },
     { key: 'release', label: 'Release', unit: '' },
     { key: 'map', label: 'MAP', unit: '' },
+    { key: 'wsrKgHrs', label: 'WSR Kg/Hrs', unit: 'Kg/Hrs' },
   ];
 
   // Filter data based on shift, quality, GSM, and date range
@@ -781,9 +782,49 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
         </Box>
       )}
 
-      <Box sx={{ height: 400 }} id="trend-chart">
-        {selectedMetrics.length > 0 ? (
-          <ResponsiveContainer width="100%" height="100%">
+      <Box sx={{ position: 'relative' }} id="trend-chart">
+        {/* Filter Summary for Export */}
+        <Box sx={{ 
+          p: 2, 
+          bgcolor: 'background.paper',
+          borderBottom: 1,
+          borderColor: 'divider'
+        }}>
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+            Trend Analysis - {dayjs().format('MMMM DD, YYYY')}
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+            <Typography variant="body2" component="span">
+              <strong>Metrics:</strong> {selectedMetrics.map(m => metrics.find(metric => metric.key === m)?.label).join(', ')}
+            </Typography>
+            <Typography variant="body2" component="span">
+              <strong>•</strong> <strong>View:</strong> {viewMode.charAt(0).toUpperCase() + viewMode.slice(1)}
+            </Typography>
+            <Typography variant="body2" component="span">
+              <strong>•</strong> <strong>Shift:</strong> {shiftFilter === 'all' ? 'All Shifts' : shiftFilter}
+            </Typography>
+            <Typography variant="body2" component="span">
+              <strong>•</strong> <strong>Quality:</strong> {qualityFilter === 'all' ? 'All Qualities' : qualityFilter}
+            </Typography>
+            <Typography variant="body2" component="span">
+              <strong>•</strong> <strong>GSM:</strong> {gsmFilter === 'all' ? 'All GSM' : gsmFilter}
+            </Typography>
+            {(startDate || endDate) && (
+              <Typography variant="body2" component="span">
+                <strong>•</strong> <strong>Date Range:</strong> {startDate ? dayjs(startDate).format('MMM DD, YYYY') : 'Start'} - {endDate ? dayjs(endDate).format('MMM DD, YYYY') : 'End'}
+              </Typography>
+            )}
+            {showMovingAverage && (
+              <Typography variant="body2" component="span">
+                <strong>•</strong> <strong>Moving Avg:</strong> {movingAveragePeriod} points
+              </Typography>
+            )}
+          </Box>
+        </Box>
+        
+        <Box sx={{ height: 400 }}>
+          {selectedMetrics.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
             <LineChart 
               data={showMovingAverage ? 
                 aggregatedData.map((point, index) => ({
@@ -907,14 +948,15 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
               );
             })}
           </LineChart>
-        </ResponsiveContainer>
-      ) : (
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-          <Typography variant="body1" color="text.secondary">
-            Select one or more metrics to display the trend chart
-          </Typography>
+          </ResponsiveContainer>
+        ) : (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <Typography variant="body1" color="text.secondary">
+              Select one or more metrics to display the trend chart
+            </Typography>
+          </Box>
+        )}
         </Box>
-      )}
       </Box>
     </Paper>
   );
