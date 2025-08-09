@@ -27,6 +27,16 @@ const MetricCard: React.FC<MetricCardProps> = ({ title, value, lcl, ucl, unit = 
   const isInSpec = !hasLimits || (value >= lcl && value <= ucl);
   const color = isInSpec ? 'success' : 'error';
   
+  // Format value based on the metric type
+  const formatValue = (val: number | undefined) => {
+    if (!val) return '-';
+    // HW SR should show no decimal places
+    if (title === 'HW SR') {
+      return Math.round(val).toString();
+    }
+    return val.toFixed(2);
+  };
+  
   return (
     <Paper sx={{ p: 2, height: '100%' }}>
       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
@@ -34,7 +44,7 @@ const MetricCard: React.FC<MetricCardProps> = ({ title, value, lcl, ucl, unit = 
       </Typography>
       <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
         <Typography variant="h4" color={hasLimits ? `${color}.main` : 'text.primary'}>
-          {value ? value.toFixed(2) : '-'}
+          {formatValue(value)}
         </Typography>
         {unit && <Typography variant="subtitle1">{unit}</Typography>}
       </Box>
@@ -123,7 +133,13 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
     numericFields.forEach(field => {
       const values = selectedData
         .map(d => d[field as keyof QualityData] as number)
-        .filter(v => v !== undefined && v !== null && !isNaN(v));
+        .filter(v => {
+          // For moisture content fields, also filter out 0 values
+          if (field.includes('moistureContent')) {
+            return v !== undefined && v !== null && !isNaN(v) && v !== 0;
+          }
+          return v !== undefined && v !== null && !isNaN(v);
+        });
       
       if (values.length > 0) {
         (displayData as any)[field] = values.reduce((sum, v) => sum + v, 0) / values.length;
@@ -399,12 +415,24 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
             unit="%"
           />
         )}
+        
+        {displayData.stretchElongation && (
+          <MetricCard title="Stretch/Elongation" value={displayData.stretchElongation} unit="%" />
+        )}
+        
+        {displayData.wetTensile && (
+          <MetricCard title="Wet Tensile" value={displayData.wetTensile} unit="gf/50mm" />
+        )}
+        
+        {displayData.wetDryTensileRatio && (
+          <MetricCard title="Wet/Dry Tensile" value={displayData.wetDryTensileRatio} unit="%" />
+        )}
       </Box>
 
       {/* Additional Metrics Accordion */}
       <Accordion sx={{ mb: 2 }}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography>Additional Strength & Performance Metrics</Typography>
+          <Typography>Additional Performance Metrics</Typography>
         </AccordionSummary>
         <AccordionDetails>
           <Box sx={{ 
@@ -412,20 +440,8 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
             gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, 
             gap: 2 
           }}>
-            {displayData.stretchElongation && (
-              <MetricCard title="Stretch/Elongation" value={displayData.stretchElongation} unit="%" />
-            )}
-            {displayData.wetTensile && (
-              <MetricCard title="Wet Tensile" value={displayData.wetTensile} unit="gf/50mm" />
-            )}
-            {displayData.wetDryTensileRatio && (
-              <MetricCard title="Wet/Dry Tensile" value={displayData.wetDryTensileRatio} unit="%" />
-            )}
             {displayData.grossMeanStrength && (
               <MetricCard title="Gross Mean Strength" value={displayData.grossMeanStrength} unit="" />
-            )}
-            {displayData.machineCreepPercent && (
-              <MetricCard title="Machine Creep" value={displayData.machineCreepPercent} unit="%" />
             )}
           </Box>
         </AccordionDetails>
@@ -459,6 +475,9 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
             )}
             {displayData.coating1 && (
               <MetricCard title="Coating 2" value={displayData.coating1} unit="" />
+            )}
+            {displayData.machineCreepPercent && (
+              <MetricCard title="Machine Creep" value={displayData.machineCreepPercent} unit="%" />
             )}
           </Box>
         </AccordionDetails>
@@ -510,18 +529,66 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
         </AccordionDetails>
       </Accordion>
 
-      {/* Remarks Section */}
-      {(displayData.remarks || displayData.break) && (
-        <Box sx={{ mt: 3, p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
-          <Typography variant="h6" gutterBottom>Remarks & Defects</Typography>
-          {displayData.remarks && (
-            <Typography variant="body2">Remarks: {displayData.remarks}</Typography>
-          )}
-          {displayData.break && (
-            <Typography variant="body2">Break: {displayData.break}</Typography>
-          )}
-        </Box>
-      )}
+      {/* Remarks Section - Show all remarks and defects for the selected date */}
+      {(() => {
+        const allRemarks = selectedData
+          .filter(d => d.remarks && d.remarks.trim() !== '')
+          .map((d, index) => ({
+            time: d.time,
+            shift: d.shift,
+            remarks: d.remarks,
+            index
+          }));
+        
+        const allBreaks = selectedData
+          .filter(d => d.break && d.break.trim() !== '')
+          .map((d, index) => ({
+            time: d.time,
+            shift: d.shift,
+            break: d.break,
+            index
+          }));
+        
+        if (allRemarks.length === 0 && allBreaks.length === 0) return null;
+        
+        return (
+          <Box sx={{ mt: 3, p: 2, bgcolor: 'background.paper', border: 1, borderColor: 'warning.main', borderRadius: 1 }}>
+            <Typography variant="h6" gutterBottom color="warning.main">
+              Remarks & Defects ({dayjs(selectedDate).format('MMMM DD, YYYY')})
+            </Typography>
+            
+            {allRemarks.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
+                  Remarks:
+                </Typography>
+                {allRemarks.map((item, idx) => (
+                  <Box key={idx} sx={{ mb: 1, pl: 2 }}>
+                    <Typography variant="body2">
+                      • {item.time && `[${item.time}]`} {item.shift && `Shift ${item.shift}:`} {item.remarks}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            )}
+            
+            {allBreaks.length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
+                  Breaks/Defects:
+                </Typography>
+                {allBreaks.map((item, idx) => (
+                  <Box key={idx} sx={{ mb: 1, pl: 2 }}>
+                    <Typography variant="body2" color="error.dark">
+                      • {item.time && `[${item.time}]`} {item.shift && `Shift ${item.shift}:`} {item.break}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Box>
+        );
+      })()}
       
       {/* Summary Statistics */}
       <Box sx={{ mt: 4 }}>

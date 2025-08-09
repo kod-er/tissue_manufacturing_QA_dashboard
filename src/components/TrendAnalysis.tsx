@@ -95,6 +95,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
     { key: 'stretchElongation', label: 'Stretch/Elongation', unit: '%' },
     { key: 'bulk', label: 'Bulk', unit: 'cm³/g' },
     { key: 'brightness', label: 'Brightness', unit: '%' },
+    { key: 'opacity', label: 'Opacity', unit: '%' },
     { key: 'moistureContent', label: 'Moisture', unit: '%' },
     { key: 'wetDryTensileRatio', label: 'Wet / Dry Tensile', unit: '%' },
     { key: 'machineCreepPercent', label: 'Machine Creep', unit: '%' },
@@ -187,7 +188,14 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
           const numericValues = values.map(v => {
             const val = v[metric];
             return typeof val === 'number' ? val : (parseFloat(val as string) || 0);
-          }).filter(v => v !== 0); // Filter out zeros from non-numeric conversions
+          }).filter(v => {
+            // For moisture content, filter out 0 values
+            if (metric === 'moistureContent') {
+              return v !== 0 && !isNaN(v);
+            }
+            // For other metrics, only filter out zeros from non-numeric conversions
+            return v !== 0;
+          });
           
           const avgValue = numericValues.length > 0 
             ? numericValues.reduce((sum, v) => sum + v, 0) / numericValues.length 
@@ -241,7 +249,13 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
           const val = d[metricKey];
           return typeof val === 'number' ? val : parseFloat(val as string);
         })
-        .filter(v => !isNaN(v) && v !== null);
+        .filter(v => {
+          // For moisture content, also filter out 0 values
+          if (metricKey === 'moistureContent') {
+            return !isNaN(v) && v !== null && v !== 0;
+          }
+          return !isNaN(v) && v !== null;
+        });
       
       const stats = calculateStatistics(values);
       const metricInfo = metrics.find(m => m.key === metricKey);

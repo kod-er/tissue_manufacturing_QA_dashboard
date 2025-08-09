@@ -50,9 +50,16 @@ const AdvancedMetrics: React.FC<AdvancedMetricsProps> = ({ data }) => {
     { name: 'Tensile CD', key: 'tensileStrengthCD' },
     { name: 'Bulk', key: 'bulk' },
     { name: 'Brightness', key: 'brightness' },
+    { name: 'Opacity', key: 'opacity' },
     { name: 'Moisture', key: 'moistureContent' }
   ].map(metric => {
-    const values = data.map(d => d[metric.key] as number);
+    let values = data.map(d => d[metric.key] as number);
+    
+    // For moisture content, filter out 0 values
+    if (metric.key === 'moistureContent') {
+      values = values.filter(v => v !== undefined && v !== null && v !== 0);
+    }
+    
     const lcl = data[0]?.[`${metric.key}Lcl`] as number || 0;
     const ucl = data[0]?.[`${metric.key}Ucl`] as number || 100;
     const cpk = calculateCpk(values, lcl, ucl);
@@ -66,15 +73,23 @@ const AdvancedMetrics: React.FC<AdvancedMetricsProps> = ({ data }) => {
 
   // Calculate quality score over time
   const qualityTrend = data.slice(0, 30).reverse().map(d => {
-    const inSpecCount = Object.entries(d).filter(([key, value]) => {
+    const validParams = Object.entries(d).filter(([key, value]) => {
       if (key.includes('Lcl') || key.includes('Ucl') || key === 'date' || typeof value !== 'number') return false;
+      // Skip moisture content if it's 0
+      if (key === 'moistureContent' && value === 0) return false;
       const lcl = d[`${key}Lcl`];
       const ucl = d[`${key}Ucl`];
-      return lcl && ucl && typeof lcl === 'number' && typeof ucl === 'number' && value >= lcl && value <= ucl;
+      return lcl && ucl && typeof lcl === 'number' && typeof ucl === 'number';
+    });
+    
+    const inSpecCount = validParams.filter(([key, value]) => {
+      const lcl = d[`${key}Lcl`] as number;
+      const ucl = d[`${key}Ucl`] as number;
+      return (value as number) >= lcl && (value as number) <= ucl;
     }).length;
     
-    const totalParams = 7;
-    const qualityScore = (inSpecCount / totalParams) * 100;
+    const totalParams = validParams.length;
+    const qualityScore = totalParams > 0 ? (inSpecCount / totalParams) * 100 : 0;
     
     return {
       date: dayjs(d.date).format('MM/DD'),
@@ -88,6 +103,8 @@ const AdvancedMetrics: React.FC<AdvancedMetricsProps> = ({ data }) => {
   data.forEach(d => {
     Object.entries(d).forEach(([key, value]) => {
       if (key.includes('Lcl') || key.includes('Ucl') || key === 'date' || typeof value !== 'number') return;
+      // Skip moisture content if it's 0
+      if (key === 'moistureContent' && value === 0) return;
       const lcl = d[`${key}Lcl`];
       const ucl = d[`${key}Ucl`];
       if (lcl && ucl && typeof lcl === 'number' && typeof ucl === 'number' && (value < lcl || value > ucl)) {
