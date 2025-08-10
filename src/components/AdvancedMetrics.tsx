@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Paper, Typography, Box, Tabs, Tab, Card, CardContent, Chip, LinearProgress, IconButton, Tooltip as MuiTooltip } from '@mui/material';
+import { Paper, Typography, Box, Tabs, Tab, Card, CardContent, Chip, LinearProgress, IconButton, Tooltip as MuiTooltip, TextField, Button, MenuItem } from '@mui/material';
 import {
   BarChart,
   Bar,
@@ -57,13 +57,63 @@ function TabPanel(props: TabPanelProps) {
 
 const AdvancedMetrics: React.FC<AdvancedMetricsProps> = ({ data }) => {
   const [tabValue, setTabValue] = useState(0);
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [shiftFilter, setShiftFilter] = useState<string>('all');
+  const [qualityFilter, setQualityFilter] = useState<string>('all');
+  const [gsmFilter, setGsmFilter] = useState<string>('all');
+  
+  // Get available shifts, qualities, and GSM grades
+  const availableShifts = Array.from(new Set(data.map(d => d.shift).filter(Boolean)));
+  const availableQualities = Array.from(new Set(data.map(d => d.quality).filter(Boolean)));
+  const availableGSMs = Array.from(new Set(data.map(d => d.gsmGrade).filter(Boolean)));
+  
+  // Filter data based on date range and other filters
+  const filteredData = useMemo(() => {
+    let filtered = data;
+    
+    // Date filter
+    if (startDate || endDate) {
+      filtered = filtered.filter(d => {
+        const recordDate = dayjs(d.date);
+        const start = startDate ? dayjs(startDate) : null;
+        const end = endDate ? dayjs(endDate) : null;
+        
+        if (start && end) {
+          return recordDate.isAfter(start.subtract(1, 'day')) && recordDate.isBefore(end.add(1, 'day'));
+        } else if (start) {
+          return recordDate.isAfter(start.subtract(1, 'day'));
+        } else if (end) {
+          return recordDate.isBefore(end.add(1, 'day'));
+        }
+        return true;
+      });
+    }
+    
+    // Shift filter
+    if (shiftFilter !== 'all') {
+      filtered = filtered.filter(d => d.shift === shiftFilter);
+    }
+    
+    // Quality filter
+    if (qualityFilter !== 'all') {
+      filtered = filtered.filter(d => d.quality === qualityFilter);
+    }
+    
+    // GSM filter
+    if (gsmFilter !== 'all') {
+      filtered = filtered.filter(d => d.gsmGrade === gsmFilter);
+    }
+    
+    return filtered;
+  }, [data, startDate, endDate, shiftFilter, qualityFilter, gsmFilter]);
   
   // Calculate daily averages first
   const dailyAverages = useMemo(() => {
     const dailyData: { [date: string]: QualityData[] } = {};
     
     // Group data by date
-    data.forEach(record => {
+    filteredData.forEach(record => {
       const date = dayjs(record.date).format('YYYY-MM-DD');
       if (!dailyData[date]) {
         dailyData[date] = [];
@@ -114,7 +164,7 @@ const AdvancedMetrics: React.FC<AdvancedMetricsProps> = ({ data }) => {
     
     // Sort by date descending
     return averagedData.sort((a, b) => dayjs(b.date).unix() - dayjs(a.date).unix());
-  }, [data]);
+  }, [filteredData]);
   
   // Use daily averages for all calculations
   const dataForAnalysis = dailyAverages;
@@ -342,10 +392,10 @@ const AdvancedMetrics: React.FC<AdvancedMetricsProps> = ({ data }) => {
 
   // Shift performance analysis
   const shiftPerformance = useMemo(() => {
-    const shifts = Array.from(new Set(data.map(d => d.shift).filter(Boolean)));
+    const shifts = Array.from(new Set(filteredData.map(d => d.shift).filter(Boolean)));
     
     return shifts.map(shift => {
-      const shiftData = data.filter(d => d.shift === shift);
+      const shiftData = filteredData.filter(d => d.shift === shift);
       const metrics = ['gsm', 'thickness', 'tensileStrengthMD', 'tensileStrengthCD'];
       
       let totalInSpec = 0;
@@ -372,7 +422,7 @@ const AdvancedMetrics: React.FC<AdvancedMetricsProps> = ({ data }) => {
         totalRecords: shiftData.length
       };
     }).sort((a, b) => b.performance - a.performance);
-  }, [data]);
+  }, [filteredData]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -380,14 +430,110 @@ const AdvancedMetrics: React.FC<AdvancedMetricsProps> = ({ data }) => {
 
   return (
     <Paper sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5">
-          Advanced Analytics Dashboard
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Chip icon={<Analytics />} label={`${dataForAnalysis.length} Days`} color="primary" variant="outlined" />
-          <Chip icon={<Assessment />} label={`${data.length} Total Records`} variant="outlined" />
-          <Chip icon={<Assessment />} label={`Last ${dayjs(dataForAnalysis[0]?.date).format('MMM DD')}`} variant="outlined" />
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h5">
+            Advanced Analytics Dashboard
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Chip icon={<Analytics />} label={`${dataForAnalysis.length} Days`} color="primary" variant="outlined" />
+            <Chip icon={<Assessment />} label={`${filteredData.length} Records`} variant="outlined" />
+            {dataForAnalysis.length > 0 && (
+              <Chip icon={<Assessment />} label={`Last ${dayjs(dataForAnalysis[0]?.date).format('MMM DD')}`} variant="outlined" />
+            )}
+          </Box>
+        </Box>
+        
+        {/* Filters */}
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          <TextField
+            type="date"
+            label="Start Date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            size="small"
+            InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 150 }}
+          />
+          <TextField
+            type="date"
+            label="End Date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            size="small"
+            InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 150 }}
+          />
+          
+          {availableShifts.length > 0 && (
+            <TextField
+              select
+              size="small"
+              value={shiftFilter}
+              onChange={(e) => setShiftFilter(e.target.value)}
+              sx={{ minWidth: 120 }}
+              label="Shift"
+            >
+              <MenuItem value="all">All Shifts</MenuItem>
+              {availableShifts.map((shift) => (
+                <MenuItem key={shift} value={shift}>
+                  {shift}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          
+          {availableQualities.length > 0 && (
+            <TextField
+              select
+              size="small"
+              value={qualityFilter}
+              onChange={(e) => setQualityFilter(e.target.value)}
+              sx={{ minWidth: 150 }}
+              label="Quality"
+            >
+              <MenuItem value="all">All Qualities</MenuItem>
+              {availableQualities.map((quality) => (
+                <MenuItem key={quality} value={quality}>
+                  {quality}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          
+          {availableGSMs.length > 0 && (
+            <TextField
+              select
+              size="small"
+              value={gsmFilter}
+              onChange={(e) => setGsmFilter(e.target.value)}
+              sx={{ minWidth: 120 }}
+              label="GSM"
+            >
+              <MenuItem value="all">All GSM</MenuItem>
+              {availableGSMs.map((gsm) => (
+                <MenuItem key={gsm} value={gsm}>
+                  {gsm}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          
+          {(startDate || endDate || shiftFilter !== 'all' || qualityFilter !== 'all' || gsmFilter !== 'all') && (
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => {
+                setStartDate('');
+                setEndDate('');
+                setShiftFilter('all');
+                setQualityFilter('all');
+                setGsmFilter('all');
+              }}
+            >
+              Clear All Filters
+            </Button>
+          )}
         </Box>
       </Box>
       
