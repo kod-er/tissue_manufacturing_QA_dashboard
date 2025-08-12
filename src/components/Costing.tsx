@@ -20,7 +20,7 @@ import {
   useTheme
 } from '@mui/material';
 import {
-  AttachMoney as AttachMoneyIcon,
+  CurrencyRupee as CurrencyRupeeIcon,
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
   LocalShipping as LocalShippingIcon,
@@ -303,9 +303,9 @@ const Costing: React.FC = () => {
       case category.includes('Labor'): return <PeopleIcon />;
       case category.includes('Water'): return <WaterDropIcon />;
       case category.includes('Maintenance'): return <BuildIcon />;
-      case category.includes('Overhead'): return <AttachMoneyIcon />;
+      case category.includes('Overhead'): return <CurrencyRupeeIcon />;
       case category.includes('Waste'): return <WaterDropIcon />;
-      default: return <AttachMoneyIcon />;
+      default: return <CurrencyRupeeIcon />;
     }
   };
 
@@ -402,7 +402,7 @@ const Costing: React.FC = () => {
                     </Typography>
                   </Box>
                 </Box>
-                <AttachMoneyIcon sx={{ fontSize: 40, color: 'primary.light' }} />
+                <CurrencyRupeeIcon sx={{ fontSize: 40, color: 'primary.light' }} />
               </Box>
             </CardContent>
           </Card>

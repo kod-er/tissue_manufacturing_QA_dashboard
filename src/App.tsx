@@ -43,7 +43,7 @@ import {
   Analytics,
   TrendingUp,
   Warning,
-  AttachMoney
+  CurrencyRupee
 } from '@mui/icons-material';
 import FileUpload from './components/FileUpload';
 import DailyReport from './components/DailyReport';
@@ -176,7 +176,7 @@ function App() {
     { icon: <TrendingUp />, label: 'Trend Analysis', value: 2, disabled: data.length === 0 },
     { icon: <Analytics />, label: 'Advanced Analytics', value: 3, disabled: data.length === 0 },
     { icon: <TableChart />, label: 'Data Table', value: 4, disabled: data.length === 0 },
-    { icon: <AttachMoney />, label: 'Costing', value: 5 },
+    { icon: <CurrencyRupee />, label: 'Costing', value: 5 },
   ];
 
   return (
