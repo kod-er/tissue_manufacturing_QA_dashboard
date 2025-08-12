@@ -42,13 +42,15 @@ import {
   Share,
   Analytics,
   TrendingUp,
-  Warning
+  Warning,
+  AttachMoney
 } from '@mui/icons-material';
 import FileUpload from './components/FileUpload';
 import DailyReport from './components/DailyReport';
 import TrendAnalysis from './components/TrendAnalysis';
 import AdvancedMetrics from './components/AdvancedMetrics';
 import DataTable from './components/DataTable';
+import Costing from './components/Costing';
 import { QualityData } from './types';
 import { getTheme } from './theme';
 import './App.css';
@@ -174,6 +176,7 @@ function App() {
     { icon: <TrendingUp />, label: 'Trend Analysis', value: 2, disabled: data.length === 0 },
     { icon: <Analytics />, label: 'Advanced Analytics', value: 3, disabled: data.length === 0 },
     { icon: <TableChart />, label: 'Data Table', value: 4, disabled: data.length === 0 },
+    { icon: <AttachMoney />, label: 'Costing', value: 5 },
   ];
 
   return (
@@ -354,6 +357,10 @@ function App() {
               
               <TabPanel value={tabValue} index={4}>
                 <DataTable data={data} fileName={fileName} />
+              </TabPanel>
+              
+              <TabPanel value={tabValue} index={5}>
+                <Costing />
               </TabPanel>
             </>
           )}
