@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Paper, Typography, Box, ToggleButton, ToggleButtonGroup, IconButton, Tooltip as MuiTooltip, TextField, MenuItem, Card, CardContent, Button, ButtonGroup, Switch, FormControlLabel } from '@mui/material';
-import { TrendingUp as TrendingUpIcon, TrendingDown as TrendingDownIcon, TrendingFlat as TrendingFlatIcon, TableChart as TableChartIcon, Image as ImageIcon } from '@mui/icons-material';
+import { TrendingUp as TrendingUpIcon, TrendingDown as TrendingDownIcon, TrendingFlat as TrendingFlatIcon, TableChart as TableChartIcon, Image as ImageIcon, BarChart as BarChartIcon } from '@mui/icons-material';
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -74,6 +76,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
   const [showMovingAverage, setShowMovingAverage] = useState(false);
   const [movingAveragePeriod, setMovingAveragePeriod] = useState(7);
   const [showControlLimits, setShowControlLimits] = useState(false);
+  const [chartType, setChartType] = useState<'line' | 'bar'>('line');
   
   // Clear date filters when changing view mode
   useEffect(() => {
@@ -403,6 +406,26 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
           <ToggleButton value="daily">Daily</ToggleButton>
           <ToggleButton value="weekly">Weekly</ToggleButton>
           <ToggleButton value="monthly">Monthly</ToggleButton>
+        </ToggleButtonGroup>
+        
+        <ToggleButtonGroup
+          value={chartType}
+          exclusive
+          onChange={(_, value) => value && setChartType(value)}
+          size="small"
+        >
+          <ToggleButton value="line">
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <TrendingUpIcon fontSize="small" />
+              Line
+            </Box>
+          </ToggleButton>
+          <ToggleButton value="bar">
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <BarChartIcon fontSize="small" />
+              Bar
+            </Box>
+          </ToggleButton>
         </ToggleButtonGroup>
         
         {availableShifts.length > 0 && (
@@ -825,6 +848,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
         <Box sx={{ height: 400 }}>
           {selectedMetrics.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
+            {chartType === 'line' ? (
             <LineChart 
               data={showMovingAverage ? 
                 aggregatedData.map((point, index) => ({
@@ -948,6 +972,109 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
               );
             })}
           </LineChart>
+            ) : (
+            <BarChart 
+              data={aggregatedData} 
+              margin={{ top: 5, right: 30, left: 20, bottom: viewMode === 'hourly' ? 50 : 5 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis 
+              dataKey="date" 
+              tick={{ fontSize: 12 }}
+              angle={viewMode === 'hourly' ? -45 : 0}
+              textAnchor={viewMode === 'hourly' ? 'end' : 'middle'}
+              height={viewMode === 'hourly' ? 60 : 30}
+            />
+            <YAxis />
+            <Tooltip 
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const data = payload[0].payload;
+                  return (
+                    <Box sx={{ p: 1.5, bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                      <Typography variant="body2" fontWeight="bold">{data.date}</Typography>
+                      {payload.map((entry: any, index: number) => {
+                        const metricIndex = parseInt(entry.dataKey.replace('value', '')) - 1;
+                        const metricInfo = selectedMetricsInfo[metricIndex];
+                        return (
+                          <Box key={entry.dataKey} sx={{ mt: index > 0 ? 1 : 0 }}>
+                            <Typography variant="body2" sx={{ color: entry.color }}>
+                              {metricInfo?.label}: {entry.value?.toFixed(2)} {metricInfo?.unit}
+                            </Typography>
+                            {data[`lcl${metricIndex + 1}`] && data[`ucl${metricIndex + 1}`] && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                Spec: {data[`lcl${metricIndex + 1}`].toFixed(2)} - {data[`ucl${metricIndex + 1}`].toFixed(2)}
+                              </Typography>
+                            )}
+                          </Box>
+                        );
+                      })}
+                      {viewMode === 'hourly' && data.shift && (
+                        <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                          Shift: {data.shift}
+                        </Typography>
+                      )}
+                      {viewMode === 'hourly' && data.quality && (
+                        <Typography variant="caption" display="block">
+                          Quality: {data.quality}
+                        </Typography>
+                      )}
+                      {viewMode === 'hourly' && data.gsmGrade && (
+                        <Typography variant="caption" display="block">
+                          GSM: {data.gsmGrade}
+                        </Typography>
+                      )}
+                      {viewMode !== 'hourly' && data.recordCount > 1 && (
+                        <Typography variant="caption" display="block" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                          Averaged from {data.recordCount} records
+                        </Typography>
+                      )}
+                    </Box>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Legend />
+            
+            {selectedMetrics.map((metric, index) => (
+              <Bar
+                key={metric}
+                dataKey={`value${index + 1}`}
+                fill={CHART_COLORS[index]}
+                name={selectedMetricsInfo[index]?.label || metric}
+              />
+            ))}
+            
+            {/* Control Limits */}
+            {showControlLimits && selectedMetrics.map((metric, index) => {
+              const lcl = filteredData.length > 0 ? filteredData[0][`${metric}Lcl`] as number : null;
+              const ucl = filteredData.length > 0 ? filteredData[0][`${metric}Ucl`] as number : null;
+              
+              return (
+                <React.Fragment key={`limits-${metric}`}>
+                  {lcl !== null && lcl !== undefined && (
+                    <ReferenceLine
+                      y={lcl}
+                      stroke={CHART_COLORS[index]}
+                      strokeDasharray="3 3"
+                      strokeWidth={1}
+                      label={{ value: `LCL (${selectedMetricsInfo[index]?.label})`, position: 'left' }}
+                    />
+                  )}
+                  {ucl !== null && ucl !== undefined && (
+                    <ReferenceLine
+                      y={ucl}
+                      stroke={CHART_COLORS[index]}
+                      strokeDasharray="3 3"
+                      strokeWidth={1}
+                      label={{ value: `UCL (${selectedMetricsInfo[index]?.label})`, position: 'left' }}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </BarChart>
+            )}
           </ResponsiveContainer>
         ) : (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
