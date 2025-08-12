@@ -12,7 +12,8 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  ReferenceLine
+  ReferenceLine,
+  LabelList
 } from 'recharts';
 import dayjs from 'dayjs';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
@@ -1042,7 +1043,14 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
                 dataKey={`value${index + 1}`}
                 fill={CHART_COLORS[index]}
                 name={selectedMetricsInfo[index]?.label || metric}
-              />
+              >
+                <LabelList 
+                  dataKey={`value${index + 1}`}
+                  position="top"
+                  formatter={(value) => typeof value === 'number' ? value.toFixed(1) : ''}
+                  style={{ fontSize: '11px', fill: '#333' }}
+                />
+              </Bar>
             ))}
             
             {/* Control Limits */}
