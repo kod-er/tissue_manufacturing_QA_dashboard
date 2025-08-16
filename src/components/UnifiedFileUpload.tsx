@@ -268,7 +268,8 @@ const UnifiedFileUpload: React.FC<UnifiedFileUploadProps> = ({
     onDrop,
     accept: {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'application/vnd.ms-excel': ['.xls']
+      'application/vnd.ms-excel': ['.xls'],
+      'application/vnd.ms-excel.sheet.macroEnabled.12': ['.xlsm']
     },
     maxFiles: 1
   });

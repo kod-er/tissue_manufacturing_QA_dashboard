@@ -57,8 +57,8 @@ const CostingUpload: React.FC<CostingUploadProps> = ({ onDataParsed, currentData
 
     try {
       // Validate file type
-      if (!file.name.match(/\.(xlsx|xls)$/i)) {
-        throw new Error('Please upload an Excel file (.xlsx or .xls)');
+      if (!file.name.match(/\.(xlsx|xls|xlsm)$/i)) {
+        throw new Error('Please upload an Excel file (.xlsx, .xls, or .xlsm)');
       }
 
       const details: string[] = [];
@@ -118,7 +118,8 @@ const CostingUpload: React.FC<CostingUploadProps> = ({ onDataParsed, currentData
     onDrop,
     accept: {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'application/vnd.ms-excel': ['.xls']
+      'application/vnd.ms-excel': ['.xls'],
+      'application/vnd.ms-excel.sheet.macroEnabled.12': ['.xlsm']
     },
     maxFiles: 1
   });
@@ -147,7 +148,7 @@ const CostingUpload: React.FC<CostingUploadProps> = ({ onDataParsed, currentData
             {isDragActive ? 'Drop the file here' : 'Drag & drop Production & Consumption Report'}
           </Typography>
           <Typography variant="body2" color="textSecondary" align="center">
-            or click to select an Excel file (.xlsx)
+            or click to select an Excel file (.xlsx, .xls, .xlsm)
           </Typography>
           <Button variant="contained" component="span">
             Choose File
