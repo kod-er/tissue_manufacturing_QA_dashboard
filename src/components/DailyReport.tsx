@@ -541,7 +541,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
           }));
         
         const allBreaks = selectedData
-          .filter(d => d.break && d.break.trim() !== '')
+          .filter(d => d.break && String(d.break).trim() !== '')
           .map((d, index) => ({
             time: d.time,
             shift: d.shift,

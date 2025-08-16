@@ -45,12 +45,13 @@ import {
   Warning,
   CurrencyRupee
 } from '@mui/icons-material';
-import FileUpload from './components/FileUpload';
+import UnifiedFileUpload from './components/UnifiedFileUpload';
 import DailyReport from './components/DailyReport';
 import TrendAnalysis from './components/TrendAnalysis';
 import AdvancedMetrics from './components/AdvancedMetrics';
 import DataTable from './components/DataTable';
 import Costing from './components/Costing';
+import { CostingData } from './utils/parseCostingData';
 import { QualityData } from './types';
 import { getTheme } from './theme';
 import './App.css';
@@ -85,6 +86,7 @@ function TabPanel(props: TabPanelProps) {
 
 function App() {
   const [data, setData] = useState<QualityData[]>([]);
+  const [costingData, setCostingData] = useState<CostingData[]>([]);
   const [fileName, setFileName] = useState<string>('');
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     const saved = localStorage.getItem('darkMode');
@@ -106,7 +108,7 @@ function App() {
     localStorage.setItem('darkMode', JSON.stringify(darkMode));
   }, [darkMode]);
 
-  const handleDataParsed = (parsedData: QualityData[], file: string) => {
+  const handleQualityDataParsed = (parsedData: QualityData[], file: string) => {
     setLoading(true);
     setTimeout(() => {
       setData(parsedData);
@@ -114,13 +116,24 @@ function App() {
       setLoading(false);
       setNotification({
         open: true,
-        message: `Successfully loaded ${parsedData.length} records from ${file}`,
+        message: `Successfully loaded ${parsedData.length} quality records from ${file}`,
         severity: 'success'
       });
       if (parsedData.length > 0) {
         setTabValue(1); // Switch to Daily Report tab
       }
     }, 1000);
+  };
+
+  const handleCostingDataParsed = (parsedData: CostingData[]) => {
+    setCostingData(parsedData);
+    if (parsedData.length > 0) {
+      setNotification({
+        open: true,
+        message: `Successfully loaded ${parsedData.length} days of costing data`,
+        severity: 'success'
+      });
+    }
   };
 
   const toggleDarkMode = () => {
@@ -176,7 +189,7 @@ function App() {
     { icon: <TrendingUp />, label: 'Trend Analysis', value: 2, disabled: data.length === 0 },
     { icon: <Analytics />, label: 'Advanced Analytics', value: 3, disabled: data.length === 0 },
     { icon: <TableChart />, label: 'Data Table', value: 4, disabled: data.length === 0 },
-    { icon: <CurrencyRupee />, label: 'Costing', value: 5 },
+    { icon: <CurrencyRupee />, label: 'Costing', value: 5, disabled: costingData.length === 0 },
   ];
 
   return (
@@ -330,9 +343,14 @@ function App() {
                   Welcome to Tissue QA Dashboard
                 </Typography>
                 <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-                  Upload your Control Chart Excel file to get started
+                  Upload your Excel files to get started
                 </Typography>
-                <FileUpload onDataParsed={handleDataParsed} />
+                <UnifiedFileUpload 
+                  onQualityDataParsed={handleQualityDataParsed}
+                  onCostingDataParsed={handleCostingDataParsed}
+                  qualityData={data}
+                  costingData={costingData}
+                />
               </Box>
             </Zoom>
           )}
@@ -340,7 +358,12 @@ function App() {
           {data.length > 0 && (
             <>
               <TabPanel value={tabValue} index={0}>
-                <FileUpload onDataParsed={handleDataParsed} />
+                <UnifiedFileUpload 
+                  onQualityDataParsed={handleQualityDataParsed}
+                  onCostingDataParsed={handleCostingDataParsed}
+                  qualityData={data}
+                  costingData={costingData}
+                />
               </TabPanel>
               
               <TabPanel value={tabValue} index={1}>
@@ -360,7 +383,7 @@ function App() {
               </TabPanel>
               
               <TabPanel value={tabValue} index={5}>
-                <Costing />
+                <Costing data={costingData} />
               </TabPanel>
             </>
           )}
