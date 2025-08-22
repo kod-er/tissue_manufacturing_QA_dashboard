@@ -24,6 +24,13 @@ export interface ProductionData {
   speed: number;
 }
 
+export interface ProductionLoss {
+  date: string;
+  department: string;
+  timeLoss: number; // in hours
+  remarks: string;
+}
+
 export interface CostingData {
   date: string;
   totalProduction: number;
@@ -42,6 +49,9 @@ export interface CostingData {
   gsmGrade: string;
   rawMaterials?: RawMaterialConsumption[];
   chemicals?: ChemicalConsumption[];
+  productionLosses?: ProductionLoss[];
+  totalTimeLoss?: number; // Total time loss in hours
+  productionEfficiency?: number; // Percentage
 }
 
 // Chemical rates per kg (estimated for demo)
@@ -81,8 +91,8 @@ export async function parseCostingExcel(file: File): Promise<CostingData[]> {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         
-        // Parse production data
-        const productionData = parseProductionSheet(workbook);
+        // Parse production data and losses
+        const { production: productionData, losses: productionLosses } = parseProductionSheet(workbook);
         
         // Parse consumption data
         const consumptionData = parseConsumptionSheet(workbook);
@@ -94,7 +104,7 @@ export async function parseCostingExcel(file: File): Promise<CostingData[]> {
         const utilityData = parseUtilityData(workbook);
         
         // Combine all data to create costing records
-        const costingData = combineCostingData(productionData, consumptionData, chemicalData, utilityData);
+        const costingData = combineCostingData(productionData, consumptionData, chemicalData, utilityData, productionLosses);
         
         resolve(costingData);
       } catch (error) {
@@ -106,32 +116,68 @@ export async function parseCostingExcel(file: File): Promise<CostingData[]> {
   });
 }
 
-function parseProductionSheet(workbook: XLSX.WorkBook): ProductionData[] {
+function parseProductionSheet(workbook: XLSX.WorkBook): { production: ProductionData[], losses: Map<string, ProductionLoss[]> } {
   const sheet = workbook.Sheets['Production '] || workbook.Sheets['Production'];
-  if (!sheet) return [];
+  if (!sheet) return { production: [], losses: new Map() };
   
   const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
   const productionData: ProductionData[] = [];
+  const lossesMap = new Map<string, ProductionLoss[]>();
   
   // Start from row 4 (0-indexed row 3)
   for (let i = 3; i < jsonData.length; i++) {
     const row = jsonData[i];
-    if (row[0] && row[2] && row[3] && row[6]) {
+    if (row[0]) {
       // Skip special codes like MR-20-J, CT-16-J
       if (typeof row[0] === 'string' && row[0].match(/^[A-Z]{2}-\d{2}-[A-Z]$/)) {
         continue;
       }
-      productionData.push({
-        date: formatDate(row[0]),
-        quality: row[2],
-        gsm: parseFloat(row[3]) || 0,
-        production: parseFloat(row[6]) || 0,
-        speed: parseFloat(row[5]) || 0
-      });
+      
+      const date = formatDate(row[0]);
+      
+      // Parse production data
+      if (row[2] && row[3] && row[6]) {
+        productionData.push({
+          date,
+          quality: row[2],
+          gsm: parseFloat(row[3]) || 0,
+          production: parseFloat(row[6]) || 0,
+          speed: parseFloat(row[5]) || 0
+        });
+      }
+      
+      // Parse production losses (columns 8, 9, 10)
+      if (row[8] && row[9]) {
+        const department = row[8].toString().trim();
+        const timeLossStr = row[9].toString();
+        const remarks = row[10] ? row[10].toString() : '';
+        
+        // Convert time loss from HH:MM:SS or decimal hours to hours
+        let timeLoss = 0;
+        if (timeLossStr.includes(':')) {
+          const parts = timeLossStr.split(':');
+          timeLoss = parseInt(parts[0]) + (parseInt(parts[1]) || 0) / 60 + (parseInt(parts[2]) || 0) / 3600;
+        } else {
+          timeLoss = parseFloat(timeLossStr) || 0;
+        }
+        
+        if (timeLoss > 0) {
+          if (!lossesMap.has(date)) {
+            lossesMap.set(date, []);
+          }
+          
+          lossesMap.get(date)!.push({
+            date,
+            department,
+            timeLoss,
+            remarks
+          });
+        }
+      }
     }
   }
   
-  return productionData;
+  return { production: productionData, losses: lossesMap };
 }
 
 function parseConsumptionSheet(workbook: XLSX.WorkBook): Map<string, RawMaterialConsumption[]> {
@@ -294,7 +340,8 @@ function combineCostingData(
   productionData: ProductionData[],
   consumptionData: Map<string, RawMaterialConsumption[]>,
   chemicalData: Map<string, ChemicalConsumption[]>,
-  utilityData: Map<string, UtilityConsumption>
+  utilityData: Map<string, UtilityConsumption>,
+  productionLosses: Map<string, ProductionLoss[]>
 ): CostingData[] {
   const costingData: CostingData[] = [];
   
@@ -369,6 +416,15 @@ function combineCostingData(
     const quality = Array.from(qualityCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Mixed';
     const gsmGrade = Array.from(gsmCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Mixed';
     
+    // Get production losses for the date
+    const dayLosses = productionLosses.get(date) || [];
+    const totalTimeLoss = dayLosses.reduce((sum, loss) => sum + loss.timeLoss, 0);
+    
+    // Calculate production efficiency
+    // Assume 24 hours operation per day minus downtime
+    const availableHours = 24 - totalTimeLoss;
+    const productionEfficiency = availableHours > 0 ? (availableHours / 24) * 100 : 0;
+    
     costingData.push({
       date,
       totalProduction,
@@ -386,7 +442,10 @@ function combineCostingData(
       quality,
       gsmGrade,
       rawMaterials: dayConsumption,
-      chemicals: dayChemicals
+      chemicals: dayChemicals,
+      productionLosses: dayLosses,
+      totalTimeLoss,
+      productionEfficiency
     });
   });
   

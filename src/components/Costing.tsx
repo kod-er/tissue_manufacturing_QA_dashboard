@@ -51,7 +51,7 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import dayjs from 'dayjs';
-import { CostingData as ImportedCostingData } from '../utils/parseCostingData';
+import { CostingData as ImportedCostingData, ProductionLoss } from '../utils/parseCostingData';
 import CostingUpload from './CostingUpload';
 
 // Define interfaces for costing data
@@ -514,7 +514,16 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
     const previousAvgCost = previousPeriod.reduce((sum, item) => sum + item.costPerKg, 0) / previousPeriod.length;
     const costChange = ((currentAvgCost - previousAvgCost) / previousAvgCost) * 100;
 
-    const currentEfficiency = currentPeriod.reduce((sum, item) => sum + item.efficiency, 0) / currentPeriod.length;
+    // Calculate efficiency from imported data if available
+    let currentEfficiency = currentPeriod.reduce((sum, item) => sum + item.efficiency, 0) / currentPeriod.length;
+    if (importedData && importedData.length > 0) {
+      const recentImportedData = importedData.slice(-7);
+      const avgProductionEfficiency = recentImportedData.reduce((sum, item) => sum + (item.productionEfficiency || 0), 0) / recentImportedData.length;
+      if (avgProductionEfficiency > 0) {
+        currentEfficiency = avgProductionEfficiency;
+      }
+    }
+    
     const totalWaste = currentPeriod.reduce((sum, item) => sum + item.waste, 0);
     const totalCost = currentPeriod.reduce((sum, item) => sum + item.totalCost, 0);
 
@@ -526,7 +535,7 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
       totalProduction: currentPeriod.reduce((sum, item) => sum + item.production, 0),
       totalCost
     };
-  }, [aggregatedData]);
+  }, [aggregatedData, importedData]);
 
   const getIcon = (category: string) => {
     switch (true) {
@@ -1033,6 +1042,262 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
             </Box>
           </Paper>
       </Box>
+
+      {/* Production Losses Analysis */}
+      {importedData && importedData.length > 0 && (
+        <Box sx={{ mt: 3 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Production Losses & Downtime Analysis
+            </Typography>
+            
+            {/* Calculate loss metrics */}
+            {(() => {
+              const filteredLossData = importedData.filter(day => {
+                if (!dateRange.start || !dateRange.end) return true;
+                const itemDate = dayjs(day.date);
+                const startDate = dayjs(dateRange.start);
+                const endDate = dayjs(dateRange.end);
+                return itemDate.isAfter(startDate.subtract(1, 'day')) && itemDate.isBefore(endDate.add(1, 'day'));
+              });
+              
+              // Aggregate losses by department
+              const lossByDepartment = new Map<string, { totalHours: number; count: number; remarks: string[] }>();
+              let totalLossHours = 0;
+              let totalDays = filteredLossData.length;
+              let totalProductionHours = totalDays * 24;
+              
+              filteredLossData.forEach(day => {
+                if (day.productionLosses) {
+                  day.productionLosses.forEach(loss => {
+                    const existing = lossByDepartment.get(loss.department) || { totalHours: 0, count: 0, remarks: [] };
+                    existing.totalHours += loss.timeLoss;
+                    existing.count += 1;
+                    if (loss.remarks) existing.remarks.push(loss.remarks);
+                    lossByDepartment.set(loss.department, existing);
+                    totalLossHours += loss.timeLoss;
+                  });
+                }
+              });
+              
+              const avgEfficiency = filteredLossData.reduce((sum, d) => sum + (d.productionEfficiency || 0), 0) / filteredLossData.length;
+              
+              // Convert to array and sort by total hours
+              const lossArray = Array.from(lossByDepartment.entries())
+                .map(([dept, data]) => ({
+                  department: dept,
+                  totalHours: data.totalHours,
+                  avgHoursPerIncident: data.totalHours / data.count,
+                  incidents: data.count,
+                  percentage: (data.totalHours / totalProductionHours) * 100,
+                  remarks: data.remarks
+                }))
+                .sort((a, b) => b.totalHours - a.totalHours);
+              
+              // Prepare data for charts
+              const dailyLossData = filteredLossData.map(day => ({
+                date: dayjs(day.date).format('MMM DD'),
+                timeLoss: day.totalTimeLoss || 0,
+                efficiency: day.productionEfficiency || 0,
+                production: day.totalProduction
+              }));
+              
+              return (
+                <>
+                  {/* KPI Cards for Losses */}
+                  <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Typography color="textSecondary" variant="body2">
+                          Total Downtime
+                        </Typography>
+                        <Typography variant="h5" color="error">
+                          {totalLossHours.toFixed(1)} hrs
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Last {totalDays} days
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Typography color="textSecondary" variant="body2">
+                          Avg Efficiency
+                        </Typography>
+                        <Typography variant="h5" color={avgEfficiency > 90 ? 'success.main' : 'warning.main'}>
+                          {avgEfficiency.toFixed(1)}%
+                        </Typography>
+                        <LinearProgress
+                          variant="determinate"
+                          value={avgEfficiency}
+                          sx={{ mt: 1, height: 6, borderRadius: 3 }}
+                          color={avgEfficiency > 90 ? 'success' : 'warning'}
+                        />
+                      </CardContent>
+                    </Card>
+                    
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Typography color="textSecondary" variant="body2">
+                          Downtime %
+                        </Typography>
+                        <Typography variant="h5" color="warning.main">
+                          {((totalLossHours / totalProductionHours) * 100).toFixed(2)}%
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Of total time
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Typography color="textSecondary" variant="body2">
+                          Top Loss Reason
+                        </Typography>
+                        <Typography variant="h6">
+                          {lossArray[0]?.department || 'N/A'}
+                        </Typography>
+                        <Typography variant="caption" color="error">
+                          {lossArray[0]?.totalHours.toFixed(1)} hrs ({lossArray[0]?.percentage.toFixed(1)}%)
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Box>
+                  
+                  {/* Charts Row */}
+                  <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 3 }}>
+                    {/* Daily Efficiency Trend */}
+                    <Box sx={{ flex: '1 1 400px', minWidth: 300 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Daily Efficiency & Downtime Trend
+                      </Typography>
+                      <Box sx={{ height: 300 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={dailyLossData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="date" />
+                            <YAxis yAxisId="left" label={{ value: 'Efficiency %', angle: -90, position: 'insideLeft' }} />
+                            <YAxis yAxisId="right" orientation="right" label={{ value: 'Time Loss (hrs)', angle: 90, position: 'insideRight' }} />
+                            <Tooltip />
+                            <Legend />
+                            <Line yAxisId="left" type="monotone" dataKey="efficiency" stroke="#4caf50" name="Efficiency %" strokeWidth={2} />
+                            <Line yAxisId="right" type="monotone" dataKey="timeLoss" stroke="#ff5722" name="Time Loss (hrs)" strokeWidth={2} strokeDasharray="5 5" />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Box>
+                    
+                    {/* Loss by Department Pie Chart */}
+                    <Box sx={{ flex: '1 1 300px', minWidth: 250 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Downtime by Department
+                      </Typography>
+                      <Box sx={{ height: 300 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={lossArray}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={({ department, percentage }) => `${department}: ${percentage.toFixed(1)}%`}
+                              outerRadius={100}
+                              fill="#8884d8"
+                              dataKey="totalHours"
+                            >
+                              {lossArray.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value: any) => `${value.toFixed(1)} hrs`} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Box>
+                  </Box>
+                  
+                  {/* Loss Details Table */}
+                  <Typography variant="subtitle2" gutterBottom>
+                    Production Loss Details
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Department/Reason</TableCell>
+                          <TableCell align="right">Total Hours</TableCell>
+                          <TableCell align="right">Incidents</TableCell>
+                          <TableCell align="right">Avg Hours/Incident</TableCell>
+                          <TableCell align="right">% of Total Time</TableCell>
+                          <TableCell>Common Issues</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {lossArray.map((loss) => (
+                          <TableRow key={loss.department}>
+                            <TableCell>
+                              <Chip
+                                label={loss.department}
+                                size="small"
+                                color={loss.department === 'Process' ? 'primary' : 
+                                       loss.department === 'Power' ? 'error' : 
+                                       loss.department === 'Grade change' ? 'warning' : 'default'}
+                              />
+                            </TableCell>
+                            <TableCell align="right">{loss.totalHours.toFixed(2)}</TableCell>
+                            <TableCell align="right">{loss.incidents}</TableCell>
+                            <TableCell align="right">{loss.avgHoursPerIncident.toFixed(2)}</TableCell>
+                            <TableCell align="right">
+                              <Typography color={loss.percentage > 1 ? 'error' : 'inherit'}>
+                                {loss.percentage.toFixed(2)}%
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="caption" sx={{ 
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                maxWidth: 300
+                              }}>
+                                {loss.remarks.slice(0, 3).join(', ')}
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  
+                  {/* Production vs Loss Correlation */}
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Production Output vs Downtime Correlation
+                    </Typography>
+                    <Box sx={{ height: 300 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={dailyLossData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis yAxisId="left" label={{ value: 'Production (MT)', angle: -90, position: 'insideLeft' }} />
+                          <YAxis yAxisId="right" orientation="right" label={{ value: 'Time Loss (hrs)', angle: 90, position: 'insideRight' }} />
+                          <Tooltip />
+                          <Legend />
+                          <Bar yAxisId="left" dataKey="production" fill="#2196f3" name="Production" />
+                          <Bar yAxisId="right" dataKey="timeLoss" fill="#ff5722" name="Time Loss" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </Box>
+                  </Box>
+                </>
+              );
+            })()}
+          </Paper>
+        </Box>
+      )}
 
       {/* Material Consumption Analysis */}
       {materialMetrics && (
