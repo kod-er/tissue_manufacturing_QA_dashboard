@@ -560,7 +560,7 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h4">
-          Tissue Manufacturing Cost Analysis
+          Cost Analysis
           {importedData && importedData.length > 0 && (
             <Typography variant="caption" sx={{ ml: 2 }}>
               (Live Data from Excel)
