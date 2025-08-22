@@ -91,8 +91,28 @@ export async function parseCostingExcel(file: File): Promise<CostingData[]> {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         
+        // Log all sheet names
+        console.log('Available sheets:', workbook.SheetNames);
+        
         // Parse production data and losses
         const { production: productionData, losses: productionLosses } = parseProductionSheet(workbook);
+        
+        // Also check daily sheets for production losses
+        const dailyLosses = parseDailySheets(workbook);
+        
+        // Merge losses from both sources
+        dailyLosses.forEach((losses, date) => {
+          if (productionLosses.has(date)) {
+            productionLosses.get(date)!.push(...losses);
+          } else {
+            productionLosses.set(date, losses);
+          }
+        });
+        
+        console.log('Total production losses found:', productionLosses.size);
+        productionLosses.forEach((losses, date) => {
+          console.log(`Date ${date}: ${losses.length} losses, total hours: ${losses.reduce((sum, l) => sum + l.timeLoss, 0)}`);
+        });
         
         // Parse consumption data
         const consumptionData = parseConsumptionSheet(workbook);
@@ -118,15 +138,31 @@ export async function parseCostingExcel(file: File): Promise<CostingData[]> {
 
 function parseProductionSheet(workbook: XLSX.WorkBook): { production: ProductionData[], losses: Map<string, ProductionLoss[]> } {
   const sheet = workbook.Sheets['Production '] || workbook.Sheets['Production'];
-  if (!sheet) return { production: [], losses: new Map() };
+  if (!sheet) {
+    console.log('Production sheet not found');
+    return { production: [], losses: new Map() };
+  }
   
   const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
   const productionData: ProductionData[] = [];
   const lossesMap = new Map<string, ProductionLoss[]>();
   
+  // Log header row to understand column structure
+  if (jsonData.length > 0) {
+    console.log('Header row:', jsonData[0]);
+    console.log('Row 2:', jsonData[1]);
+    console.log('Row 3:', jsonData[2]);
+  }
+  
   // Start from row 4 (0-indexed row 3)
   for (let i = 3; i < jsonData.length; i++) {
     const row = jsonData[i];
+    
+    // Log first few rows to debug
+    if (i < 10) {
+      console.log(`Row ${i + 1}:`, row);
+    }
+    
     if (row[0]) {
       // Skip special codes like MR-20-J, CT-16-J
       if (typeof row[0] === 'string' && row[0].match(/^[A-Z]{2}-\d{2}-[A-Z]$/)) {
@@ -146,38 +182,173 @@ function parseProductionSheet(workbook: XLSX.WorkBook): { production: Production
         });
       }
       
-      // Parse production losses (columns 8, 9, 10)
-      if (row[8] && row[9]) {
+      // Parse production losses
+      // In the Production summary sheet, losses might be aggregated differently
+      // Check columns 8, 9, 10 for department, time loss, and remarks
+      if (row[8] && row[8].toString().trim() !== '' && 
+          row[8].toString().trim() !== 'Day total' &&
+          !row[8].toString().includes('M/c Production')) {
+        
         const department = row[8].toString().trim();
-        const timeLossStr = row[9].toString();
-        const remarks = row[10] ? row[10].toString() : '';
+        let remarks = row[10] ? row[10].toString() : '';
         
-        // Convert time loss from HH:MM:SS or decimal hours to hours
-        let timeLoss = 0;
-        if (timeLossStr.includes(':')) {
-          const parts = timeLossStr.split(':');
-          timeLoss = parseInt(parts[0]) + (parseInt(parts[1]) || 0) / 60 + (parseInt(parts[2]) || 0) / 3600;
-        } else {
-          timeLoss = parseFloat(timeLossStr) || 0;
-        }
-        
-        if (timeLoss > 0) {
-          if (!lossesMap.has(date)) {
-            lossesMap.set(date, []);
+        // Time loss might be in column 9
+        if (row[9] !== undefined && row[9] !== null && row[9] !== '') {
+          let timeLoss = 0;
+          const timeLossRaw = row[9];
+          
+          // Handle different time formats
+          if (typeof timeLossRaw === 'number') {
+            // Excel might store time as fraction of a day
+            if (timeLossRaw < 1) {
+              timeLoss = timeLossRaw * 24;
+            } else {
+              timeLoss = timeLossRaw;
+            }
+          } else {
+            const timeLossStr = timeLossRaw.toString().trim();
+            
+            if (timeLossStr.includes(':')) {
+              // Handle H:MM format (hours:minutes)
+              const parts = timeLossStr.split(':');
+              if (parts.length >= 2) {
+                const hours = parseInt(parts[0]) || 0;
+                const minutes = parseInt(parts[1]) || 0;
+                timeLoss = hours + minutes / 60;
+              }
+            } else {
+              // Try to parse as a regular number (hours)
+              timeLoss = parseFloat(timeLossStr) || 0;
+            }
           }
           
-          lossesMap.get(date)!.push({
-            date,
-            department,
-            timeLoss,
-            remarks
-          });
+          // Debug logging
+          console.log(`Production sheet - Date: ${date}, Dept: ${department}, TimeLossRaw: ${timeLossRaw}, TimeLossParsed: ${timeLoss} hours`);
+          
+          if (timeLoss > 0) {
+            if (!lossesMap.has(date)) {
+              lossesMap.set(date, []);
+            }
+            
+            lossesMap.get(date)!.push({
+              date,
+              department,
+              timeLoss,
+              remarks
+            });
+          }
         }
       }
     }
   }
   
   return { production: productionData, losses: lossesMap };
+}
+
+function parseDailySheets(workbook: XLSX.WorkBook): Map<string, ProductionLoss[]> {
+  const dailyLossesMap = new Map<string, ProductionLoss[]>();
+  
+  // Look for sheets with date pattern (e.g., "02-08-2025")
+  const datePattern = /^\d{2}-\d{2}-\d{4}$/;
+  
+  workbook.SheetNames.forEach(sheetName => {
+    if (datePattern.test(sheetName)) {
+      console.log(`Checking daily sheet: ${sheetName}`);
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+      
+      // Parse date from sheet name
+      const [day, month, year] = sheetName.split('-');
+      const date = `${year}-${month}-${day}`;
+      
+      // Look for production loss data in daily sheets
+      // In daily sheets, the structure is different:
+      // Column 8: Department
+      // Column 9: Time loss (H:MM format)
+      // Column 10: Hrs (might be empty)
+      // Column 11: Min (might be empty)
+      // Column 12: Remarks
+      
+      console.log(`Parsing ${sheetName} - first data row:`, jsonData[7]);
+      
+      for (let i = 7; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        
+        // Look for department in column 8 (0-indexed)
+        if (row[8] && row[8].toString().trim() !== '' && 
+            row[8].toString().trim() !== 'Day total' &&
+            row[8].toString().trim() !== 'Day Total Hrs.' &&
+            !row[8].toString().includes('Tissue Paper')) {
+          
+          const department = row[8].toString().trim();
+          let timeLoss = 0;
+          let remarks = '';
+          
+          // Check column 9 for time in H:MM format
+          if (row[9] !== undefined && row[9] !== null && row[9] !== '') {
+            const timeLossRaw = row[9];
+            
+            if (typeof timeLossRaw === 'number') {
+              // Excel might store time as fraction of day
+              if (timeLossRaw < 1) {
+                timeLoss = timeLossRaw * 24;
+              } else {
+                timeLoss = timeLossRaw;
+              }
+            } else {
+              const timeLossStr = timeLossRaw.toString().trim();
+              
+              if (timeLossStr.includes(':')) {
+                // Parse H:MM format
+                const parts = timeLossStr.split(':');
+                if (parts.length >= 2) {
+                  const hours = parseInt(parts[0]) || 0;
+                  const minutes = parseInt(parts[1]) || 0;
+                  timeLoss = hours + minutes / 60;
+                }
+              } else {
+                timeLoss = parseFloat(timeLossStr) || 0;
+              }
+            }
+          }
+          
+          // Check if time is in separate Hrs/Min columns (10 and 11)
+          if (timeLoss === 0) {
+            const hrs = parseFloat(row[10]) || 0;
+            const mins = parseFloat(row[11]) || 0;
+            if (hrs > 0 || mins > 0) {
+              timeLoss = hrs + mins / 60;
+            }
+          }
+          
+          // Remarks might be in column 12
+          if (row[12]) {
+            remarks = row[12].toString();
+          } else if (row[11] && typeof row[11] === 'string' && !row[11].match(/^\d+$/)) {
+            // Sometimes remarks might be in column 11 if it's not a number
+            remarks = row[11].toString();
+          }
+          
+          if (timeLoss > 0) {
+            if (!dailyLossesMap.has(date)) {
+              dailyLossesMap.set(date, []);
+            }
+            
+            dailyLossesMap.get(date)!.push({
+              date,
+              department,
+              timeLoss,
+              remarks
+            });
+            
+            console.log(`Daily sheet ${sheetName}: Found loss - ${department}, ${timeLoss} hrs, remarks: ${remarks}`);
+          }
+        }
+      }
+    }
+  });
+  
+  return dailyLossesMap;
 }
 
 function parseConsumptionSheet(workbook: XLSX.WorkBook): Map<string, RawMaterialConsumption[]> {
