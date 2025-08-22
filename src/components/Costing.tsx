@@ -1299,6 +1299,283 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
         </Box>
       )}
 
+      {/* Pulp Consumption Insights */}
+      {materialMetrics && (
+        <Box sx={{ mt: 3 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Pulp Consumption Insights
+            </Typography>
+            
+            {/* Calculate pulp-specific metrics */}
+            {(() => {
+              // Separate softwood and hardwood pulps
+              const softwoodMaterials = materialMetrics.materialCategories.softwoodPulp;
+              const hardwoodMaterials = materialMetrics.materialCategories.hardwoodPulp;
+              
+              const totalSoftwoodQty = softwoodMaterials.reduce((sum, m) => sum + m.quantity, 0);
+              const totalHardwoodQty = hardwoodMaterials.reduce((sum, m) => sum + m.quantity, 0);
+              const totalPulpQty = totalSoftwoodQty + totalHardwoodQty;
+              
+              const softwoodPercentage = totalPulpQty > 0 ? (totalSoftwoodQty / totalPulpQty) * 100 : 0;
+              const hardwoodPercentage = totalPulpQty > 0 ? (totalHardwoodQty / totalPulpQty) * 100 : 0;
+              
+              // Daily pulp consumption trend
+              const dailyPulpData = filteredData.map(day => {
+                const dayMaterials = importedData?.find(d => d.date === day.date)?.rawMaterials || [];
+                const softwood = dayMaterials
+                  .filter(m => m.material.toLowerCase().includes('softwood') || 
+                              ['sodra', 'stora', 'metsa', 'mercer', 'laja', 'pacifico', 'komi'].some(brand => 
+                                m.material.toLowerCase().includes(brand)))
+                  .reduce((sum, m) => sum + m.quantity, 0);
+                const hardwood = dayMaterials
+                  .filter(m => m.material.toLowerCase().includes('hardwood') || 
+                              ['acacia', 'cmpc', 'baycel', 'suzano', 'april'].some(brand => 
+                                m.material.toLowerCase().includes(brand)))
+                  .reduce((sum, m) => sum + m.quantity, 0);
+                
+                return {
+                  date: dayjs(day.date).format('MMM DD'),
+                  softwood,
+                  hardwood,
+                  total: softwood + hardwood,
+                  production: day.production / 1000 // Convert to MT
+                };
+              }).filter(d => d.total > 0);
+              
+              // Calculate efficiency metrics
+              const avgPulpPerMT = totalPulpQty / materialMetrics.totalProduction;
+              const pulpYield = materialMetrics.totalProduction / totalPulpQty;
+              
+              return (
+                <>
+                  {/* Pulp KPI Cards */}
+                  <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Typography color="textSecondary" variant="body2">
+                          Total Pulp Consumed
+                        </Typography>
+                        <Typography variant="h5">
+                          {totalPulpQty.toFixed(2)} MT
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          {avgPulpPerMT.toFixed(3)} MT/MT production
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Typography color="textSecondary" variant="body2">
+                          Pulp Mix Ratio
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                          <Chip 
+                            label={`SW: ${softwoodPercentage.toFixed(1)}%`} 
+                            size="small" 
+                            sx={{ bgcolor: '#2196f3', color: 'white' }}
+                          />
+                          <Chip 
+                            label={`HW: ${hardwoodPercentage.toFixed(1)}%`} 
+                            size="small" 
+                            sx={{ bgcolor: '#4caf50', color: 'white' }}
+                          />
+                        </Box>
+                        <LinearProgress
+                          variant="determinate"
+                          value={softwoodPercentage}
+                          sx={{ mt: 1, height: 8, borderRadius: 4, bgcolor: '#4caf50' }}
+                        />
+                      </CardContent>
+                    </Card>
+                    
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Typography color="textSecondary" variant="body2">
+                          Pulp Yield
+                        </Typography>
+                        <Typography variant="h5">
+                          {pulpYield.toFixed(2)}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          MT tissue/MT pulp
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Typography color="textSecondary" variant="body2">
+                          Top Pulp Brand
+                        </Typography>
+                        <Typography variant="h6" sx={{ fontSize: '1rem' }}>
+                          {materialMetrics.topMaterials[0]?.material.split(' ').slice(2).join(' ') || 'N/A'}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          {materialMetrics.topMaterials[0]?.quantity.toFixed(1)} MT ({materialMetrics.topMaterials[0]?.percentage.toFixed(1)}%)
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Box>
+                  
+                  {/* Pulp Consumption Trend Chart */}
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Daily Pulp Consumption vs Production
+                    </Typography>
+                    <Box sx={{ height: 300 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={dailyPulpData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis yAxisId="left" label={{ value: 'Pulp Consumption (MT)', angle: -90, position: 'insideLeft' }} />
+                          <YAxis yAxisId="right" orientation="right" label={{ value: 'Production (MT)', angle: 90, position: 'insideRight' }} />
+                          <Tooltip />
+                          <Legend />
+                          <Line yAxisId="left" type="monotone" dataKey="softwood" stroke="#2196f3" name="Softwood" strokeWidth={2} />
+                          <Line yAxisId="left" type="monotone" dataKey="hardwood" stroke="#4caf50" name="Hardwood" strokeWidth={2} />
+                          <Line yAxisId="left" type="monotone" dataKey="total" stroke="#ff9800" name="Total Pulp" strokeWidth={2} strokeDasharray="5 5" />
+                          <Line yAxisId="right" type="monotone" dataKey="production" stroke="#9c27b0" name="Production" strokeWidth={2} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </Box>
+                  </Box>
+                  
+                  {/* Pulp Mix Composition */}
+                  <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 3 }}>
+                    {/* Softwood vs Hardwood Pie */}
+                    <Box sx={{ flex: '1 1 300px' }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Pulp Type Distribution
+                      </Typography>
+                      <Box sx={{ height: 250 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: 'Softwood', value: totalSoftwoodQty, percentage: softwoodPercentage },
+                                { name: 'Hardwood', value: totalHardwoodQty, percentage: hardwoodPercentage }
+                              ]}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={({ name, percentage }) => `${name}: ${percentage.toFixed(1)}%`}
+                              outerRadius={80}
+                              fill="#8884d8"
+                              dataKey="value"
+                            >
+                              <Cell fill="#2196f3" />
+                              <Cell fill="#4caf50" />
+                            </Pie>
+                            <Tooltip formatter={(value: any) => `${value.toFixed(2)} MT`} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Box>
+                    
+                    {/* Top Pulp Brands Bar Chart */}
+                    <Box sx={{ flex: '1 1 400px' }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Top Pulp Brands by Consumption
+                      </Typography>
+                      <Box sx={{ height: 250 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart 
+                            data={[...softwoodMaterials, ...hardwoodMaterials]
+                              .sort((a, b) => b.quantity - a.quantity)
+                              .slice(0, 8)
+                              .map(m => ({
+                                brand: m.material.replace(/Imported (Softwood|Hardwood) Pulp /g, '').replace(/ \(AD\)/g, ''),
+                                quantity: m.quantity,
+                                type: softwoodMaterials.includes(m) ? 'Softwood' : 'Hardwood'
+                              }))}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="brand" angle={-45} textAnchor="end" height={100} />
+                            <YAxis tickFormatter={(value) => `${value} MT`} />
+                            <Tooltip formatter={(value: any) => `${value.toFixed(2)} MT`} />
+                            <Bar dataKey="quantity">
+                              {[...softwoodMaterials, ...hardwoodMaterials]
+                                .sort((a, b) => b.quantity - a.quantity)
+                                .slice(0, 8)
+                                .map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={softwoodMaterials.includes(entry) ? '#2196f3' : '#4caf50'} />
+                                ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Box>
+                  </Box>
+                  
+                  {/* Pulp Efficiency Table */}
+                  <Typography variant="subtitle2" gutterBottom>
+                    Pulp Consumption Efficiency by Type
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Pulp Type</TableCell>
+                          <TableCell align="right">Total Quantity (MT)</TableCell>
+                          <TableCell align="right">% of Total</TableCell>
+                          <TableCell align="right">Cost (₹)</TableCell>
+                          <TableCell align="right">Avg Rate/MT</TableCell>
+                          <TableCell align="right">Top Brand</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell>
+                            <Chip label="Softwood" size="small" sx={{ bgcolor: '#2196f3', color: 'white' }} />
+                          </TableCell>
+                          <TableCell align="right">{totalSoftwoodQty.toFixed(2)}</TableCell>
+                          <TableCell align="right">{softwoodPercentage.toFixed(1)}%</TableCell>
+                          <TableCell align="right">{formatIndianCurrency(materialMetrics.categoryCosts.softwoodPulp)}</TableCell>
+                          <TableCell align="right">
+                            {totalSoftwoodQty > 0 ? formatIndianCurrency(materialMetrics.categoryCosts.softwoodPulp / totalSoftwoodQty) : 'N/A'}
+                          </TableCell>
+                          <TableCell align="right">
+                            {softwoodMaterials.length > 0 ? softwoodMaterials[0].material.split(' ').slice(3).join(' ').replace('(AD)', '') : 'N/A'}
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>
+                            <Chip label="Hardwood" size="small" sx={{ bgcolor: '#4caf50', color: 'white' }} />
+                          </TableCell>
+                          <TableCell align="right">{totalHardwoodQty.toFixed(2)}</TableCell>
+                          <TableCell align="right">{hardwoodPercentage.toFixed(1)}%</TableCell>
+                          <TableCell align="right">{formatIndianCurrency(materialMetrics.categoryCosts.hardwoodPulp)}</TableCell>
+                          <TableCell align="right">
+                            {totalHardwoodQty > 0 ? formatIndianCurrency(materialMetrics.categoryCosts.hardwoodPulp / totalHardwoodQty) : 'N/A'}
+                          </TableCell>
+                          <TableCell align="right">
+                            {hardwoodMaterials.length > 0 ? hardwoodMaterials[0].material.split(' ').slice(3).join(' ').replace('(AD)', '') : 'N/A'}
+                          </TableCell>
+                        </TableRow>
+                        <TableRow sx={{ bgcolor: 'action.hover' }}>
+                          <TableCell><strong>Total</strong></TableCell>
+                          <TableCell align="right"><strong>{totalPulpQty.toFixed(2)}</strong></TableCell>
+                          <TableCell align="right"><strong>100%</strong></TableCell>
+                          <TableCell align="right">
+                            <strong>{formatIndianCurrency(materialMetrics.categoryCosts.softwoodPulp + materialMetrics.categoryCosts.hardwoodPulp)}</strong>
+                          </TableCell>
+                          <TableCell align="right">
+                            <strong>{formatIndianCurrency((materialMetrics.categoryCosts.softwoodPulp + materialMetrics.categoryCosts.hardwoodPulp) / totalPulpQty)}</strong>
+                          </TableCell>
+                          <TableCell />
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </>
+              );
+            })()}
+          </Paper>
+        </Box>
+      )}
+
       {/* Material Consumption Analysis */}
       {materialMetrics && (
         <Box sx={{ mt: 3 }}>
