@@ -85,7 +85,7 @@ const calculateBoxPlotStats = (data: number[]) => {
   
   // Find actual whisker values within the data
   const lowerWhiskerValue = sorted.find(v => v >= lowerWhisker) || sorted[0];
-  const upperWhiskerValue = sorted.reverse().find(v => v <= upperWhisker) || sorted[0];
+  const upperWhiskerValue = [...sorted].reverse().find(v => v <= upperWhisker) || sorted[sorted.length - 1];
   
   // Find outliers
   const outliers = data.filter(v => v < lowerWhisker || v > upperWhisker);
@@ -1288,31 +1288,42 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
                 <React.Fragment key={metric}>
                   {/* Box (Q1 to Q3) */}
                   <Bar
-                    dataKey={`q3${index + 1}`}
-                    fill={CHART_COLORS[index]}
-                    fillOpacity={0.3}
+                    dataKey={`max${index + 1}`}
+                    fill="transparent"
                     name={metricInfo?.label || metric}
                     shape={(props: any) => {
-                      const { x, y, width, height, payload } = props;
+                      const { x, y, width, height, payload, background } = props;
                       const q1 = payload[`q1${index + 1}`];
                       const q3 = payload[`q3${index + 1}`];
                       const median = payload[`median${index + 1}`];
                       const lowerWhisker = payload[`lowerWhisker${index + 1}`];
                       const upperWhisker = payload[`upperWhisker${index + 1}`];
                       const outliers = payload[`outliers${index + 1}`] || [];
+                      const min = payload[`min${index + 1}`];
+                      const max = payload[`max${index + 1}`];
                       
-                      if (!q1 || !q3 || !median) return <></>;
+                      if (!q1 || !q3 || !median || !max) return <></>;
                       
-                      const yScale = props.yScale || ((val: number) => y - (val / q3) * height);
+                      // Since we're using max as dataKey, y is the position of max value
+                      // and y + height is the position of 0
+                      const zeroY = y + height;
+                      
+                      // Calculate scale based on the max value
+                      const scaleValue = (value: number) => {
+                        if (max === 0) return zeroY;
+                        // y is where max is plotted, so scale other values proportionally
+                        return y + height * (1 - value / max);
+                      };
+                      
                       const centerX = x + width / 2;
                       const boxWidth = Math.min(width * 0.8, barWidth);
                       const boxX = centerX - boxWidth / 2;
                       
-                      const q3Y = yScale(q3);
-                      const q1Y = yScale(q1);
-                      const medianY = yScale(median);
-                      const lowerWhiskerY = yScale(lowerWhisker);
-                      const upperWhiskerY = yScale(upperWhisker);
+                      const q3Y = scaleValue(q3);
+                      const q1Y = scaleValue(q1);
+                      const medianY = scaleValue(median);
+                      const lowerWhiskerY = scaleValue(lowerWhisker);
+                      const upperWhiskerY = scaleValue(upperWhisker);
                       
                       return (
                         <g>
@@ -1379,7 +1390,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
                             <circle
                               key={i}
                               cx={centerX}
-                              cy={yScale(outlier)}
+                              cy={scaleValue(outlier)}
                               r={3}
                               fill="none"
                               stroke={CHART_COLORS[index]}
