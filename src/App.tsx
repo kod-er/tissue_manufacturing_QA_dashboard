@@ -340,7 +340,7 @@ function App() {
                   }} 
                 />
                 <Typography variant="h4" gutterBottom sx={{ mb: 4 }}>
-                  Welcome to Tissue QA Dashboard
+                  Welcome to GSTPL R&D /Quality Control
                 </Typography>
                 <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
                   Upload your Excel files to get started
