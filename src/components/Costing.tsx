@@ -61,6 +61,7 @@ interface CostBreakdown {
   percentage: number;
   trend: 'up' | 'down' | 'stable';
   variance: number;
+  costType: 'Variable' | 'Fixed';
 }
 
 interface MaterialConsumption {
@@ -423,7 +424,7 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
     }).sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredData, timeRange]);
 
-  // Calculate cost breakdown
+  // Calculate cost breakdown with Variable/Fixed categorization
   const costBreakdown: CostBreakdown[] = useMemo(() => {
     const totals = filteredData.reduce((acc, item) => ({
       fiber: acc.fiber + item.fiber,
@@ -438,72 +439,108 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
       total: acc.total + item.totalCost
     }), { fiber: 0, chemicals: 0, steam: 0, electricity: 0, labor: 0, water: 0, maintenance: 0, overhead: 0, waste: 0, total: 0 });
 
-    return [
+    // Calculate packaging costs from imported data
+    let packagingCost = 0;
+    if (importedData && importedData.length > 0) {
+      // Calculate average packaging cost per MT based on consumption
+      const packagingItems = ['Core pipes', 'Stretch film'];
+      importedData.forEach(day => {
+        if (day.rawMaterials) {
+          day.rawMaterials.forEach(material => {
+            if (packagingItems.some(item => material.material.includes(item))) {
+              packagingCost += material.amount;
+            }
+          });
+        }
+      });
+    }
+
+    const breakdown = [
       {
-        category: 'Fiber (Wood Pulp/Recycled)',
+        category: 'Fiber',
         amount: totals.fiber,
         percentage: (totals.fiber / totals.total) * 100,
-        trend: 'up',
-        variance: 4.5
+        trend: 'up' as const,
+        variance: 4.5,
+        costType: 'Variable' as const
       },
       {
         category: 'Chemicals',
         amount: totals.chemicals,
         percentage: (totals.chemicals / totals.total) * 100,
-        trend: 'up',
-        variance: 2.8
+        trend: 'up' as const,
+        variance: 2.8,
+        costType: 'Variable' as const
       },
       {
         category: 'Steam',
         amount: totals.steam,
         percentage: (totals.steam / totals.total) * 100,
-        trend: 'down',
-        variance: -1.5
+        trend: 'down' as const,
+        variance: -1.5,
+        costType: 'Variable' as const
       },
       {
-        category: 'Electricity',
+        category: 'Power',
         amount: totals.electricity,
         percentage: (totals.electricity / totals.total) * 100,
-        trend: 'up',
-        variance: 3.2
+        trend: 'up' as const,
+        variance: 3.2,
+        costType: 'Variable' as const
       },
       {
-        category: 'Labor',
-        amount: totals.labor,
-        percentage: (totals.labor / totals.total) * 100,
-        trend: 'stable',
-        variance: 0.5
+        category: 'Packaging',
+        amount: packagingCost,
+        percentage: (packagingCost / totals.total) * 100,
+        trend: 'stable' as const,
+        variance: 1.2,
+        costType: 'Variable' as const
       },
       {
         category: 'Water',
         amount: totals.water,
         percentage: (totals.water / totals.total) * 100,
-        trend: 'stable',
-        variance: -0.3
+        trend: 'stable' as const,
+        variance: -0.3,
+        costType: 'Variable' as const
       },
       {
-        category: 'Maintenance',
+        category: 'Waste',
+        amount: totals.waste,
+        percentage: (totals.waste / totals.total) * 100,
+        trend: 'down' as const,
+        variance: -2.1,
+        costType: 'Variable' as const
+      },
+      {
+        category: 'Salaries',
+        amount: totals.labor,
+        percentage: (totals.labor / totals.total) * 100,
+        trend: 'stable' as const,
+        variance: 0.5,
+        costType: 'Fixed' as const
+      },
+      {
+        category: 'R&M',
         amount: totals.maintenance,
         percentage: (totals.maintenance / totals.total) * 100,
-        trend: 'up',
-        variance: 1.8
+        trend: 'up' as const,
+        variance: 1.8,
+        costType: 'Fixed' as const
       },
       {
         category: 'Overhead',
         amount: totals.overhead,
         percentage: (totals.overhead / totals.total) * 100,
-        trend: 'stable',
-        variance: 0.2
-      },
-      {
-        category: 'Waste Management',
-        amount: totals.waste,
-        percentage: (totals.waste / totals.total) * 100,
-        trend: 'down',
-        variance: -2.1
+        trend: 'stable' as const,
+        variance: 0.2,
+        costType: 'Fixed' as const
       }
     ];
-  }, [filteredData]);
+
+    // Sort by percentage descending
+    return breakdown.sort((a, b) => b.percentage - a.percentage);
+  }, [filteredData, importedData]);
 
   // Calculate KPIs
   const kpis = useMemo(() => {
@@ -926,7 +963,7 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
         <Box sx={{ flex: '1 1 400px', minWidth: 300 }}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
-              Cost Breakdown
+              Cost Breakdown - Variable & Fixed Costs
             </Typography>
             <Box sx={{ height: 400 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -935,27 +972,60 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
                     data={costBreakdown}
                     cx="50%"
                     cy="50%"
-                    labelLine={false}
-                    label={({ percentage }) => `${percentage.toFixed(0)}%`}
                     outerRadius={120}
                     fill="#8884d8"
                     dataKey="percentage"
+                    label={(entry) => `${entry.category}: ${entry.percentage.toFixed(1)}%`}
+                    labelLine={false}
                   >
                     {costBreakdown.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip 
-                    formatter={(value: any, name: string) => {
-                      if (typeof value === 'number') {
-                        return `${value.toFixed(1)}%`;
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <Box sx={{ bgcolor: 'background.paper', p: 1, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                            <Typography variant="body2" fontWeight="bold">{data.category}</Typography>
+                            <Typography variant="caption">Type: {data.costType}</Typography>
+                            <Typography variant="body2">Amount: {formatIndianCurrency(data.amount)}</Typography>
+                            <Typography variant="body2">Percentage: {data.percentage.toFixed(2)}%</Typography>
+                            <Typography variant="caption" color={data.trend === 'up' ? 'error' : 'success.main'}>
+                              Trend: {data.trend === 'up' ? '↑' : data.trend === 'down' ? '↓' : '→'} {Math.abs(data.variance).toFixed(1)}%
+                            </Typography>
+                          </Box>
+                        );
                       }
-                      return value;
+                      return null;
                     }}
                   />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
+            </Box>
+            
+            {/* Cost Type Summary */}
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-around' }}>
+              <Box>
+                <Typography variant="subtitle2" color="primary">Variable Costs</Typography>
+                <Typography variant="h6">
+                  {formatIndianCurrency(costBreakdown.filter(c => 'costType' in c && c.costType === 'Variable').reduce((sum, c) => sum + c.amount, 0))}
+                </Typography>
+                <Typography variant="caption" color="textSecondary">
+                  {costBreakdown.filter(c => 'costType' in c && c.costType === 'Variable').reduce((sum, c) => sum + c.percentage, 0).toFixed(1)}%
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="secondary">Fixed Costs</Typography>
+                <Typography variant="h6">
+                  {formatIndianCurrency(costBreakdown.filter(c => 'costType' in c && c.costType === 'Fixed').reduce((sum, c) => sum + c.amount, 0))}
+                </Typography>
+                <Typography variant="caption" color="textSecondary">
+                  {costBreakdown.filter(c => 'costType' in c && c.costType === 'Fixed').reduce((sum, c) => sum + c.percentage, 0).toFixed(1)}%
+                </Typography>
+              </Box>
             </Box>
           </Paper>
         </Box>

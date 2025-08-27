@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Paper, Typography, Box, ToggleButton, ToggleButtonGroup, IconButton, Tooltip as MuiTooltip, TextField, MenuItem, Card, CardContent, Button, ButtonGroup, Switch, FormControlLabel } from '@mui/material';
-import { TrendingUp as TrendingUpIcon, TrendingDown as TrendingDownIcon, TrendingFlat as TrendingFlatIcon, TableChart as TableChartIcon, Image as ImageIcon, BarChart as BarChartIcon } from '@mui/icons-material';
+import { TrendingUp as TrendingUpIcon, TrendingDown as TrendingDownIcon, TrendingFlat as TrendingFlatIcon, TableChart as TableChartIcon, Image as ImageIcon, BarChart as BarChartIcon, CandlestickChart as CandlestickChartIcon } from '@mui/icons-material';
 import {
   LineChart,
   Line,
@@ -13,7 +13,9 @@ import {
   Legend,
   ResponsiveContainer,
   ReferenceLine,
-  LabelList
+  LabelList,
+  Rectangle,
+  Cell
 } from 'recharts';
 import dayjs from 'dayjs';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
@@ -60,6 +62,46 @@ const calculateStatistics = (data: number[]) => {
   };
 };
 
+// Calculate box plot statistics
+const calculateBoxPlotStats = (data: number[]) => {
+  if (data.length === 0) return null;
+  
+  const sorted = [...data].sort((a, b) => a - b);
+  const n = sorted.length;
+  
+  // Calculate quartiles
+  const q1Index = Math.floor((n - 1) * 0.25);
+  const q3Index = Math.floor((n - 1) * 0.75);
+  const medianIndex = Math.floor((n - 1) * 0.5);
+  
+  const q1 = sorted[q1Index];
+  const q3 = sorted[q3Index];
+  const median = sorted[medianIndex];
+  const iqr = q3 - q1;
+  
+  // Calculate whiskers (1.5 * IQR)
+  const lowerWhisker = q1 - 1.5 * iqr;
+  const upperWhisker = q3 + 1.5 * iqr;
+  
+  // Find actual whisker values within the data
+  const lowerWhiskerValue = sorted.find(v => v >= lowerWhisker) || sorted[0];
+  const upperWhiskerValue = sorted.reverse().find(v => v <= upperWhisker) || sorted[0];
+  
+  // Find outliers
+  const outliers = data.filter(v => v < lowerWhisker || v > upperWhisker);
+  
+  return {
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    q1,
+    median,
+    q3,
+    lowerWhisker: lowerWhiskerValue,
+    upperWhisker: upperWhiskerValue,
+    outliers
+  };
+};
+
 interface TrendAnalysisProps {
   data: QualityData[];
 }
@@ -77,7 +119,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
   const [showMovingAverage, setShowMovingAverage] = useState(false);
   const [movingAveragePeriod, setMovingAveragePeriod] = useState(7);
   const [showControlLimits, setShowControlLimits] = useState(false);
-  const [chartType, setChartType] = useState<'line' | 'bar'>('line');
+  const [chartType, setChartType] = useState<'line' | 'bar' | 'box'>('line');
   
   // Clear date filters when changing view mode
   useEffect(() => {
@@ -241,6 +283,83 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
       return maData;
     });
   }, [aggregatedData, showMovingAverage, movingAveragePeriod, selectedMetrics]);
+
+  // Calculate box plot data
+  const boxPlotData = useMemo(() => {
+    if (chartType !== 'box' || selectedMetrics.length === 0) return [];
+    
+    const grouped: { [key: string]: QualityData[] } = {};
+    
+    filteredData.forEach(d => {
+      let key: string;
+      if (viewMode === 'daily') {
+        key = d.date;
+      } else if (viewMode === 'weekly') {
+        const dateObj = dayjs(d.date);
+        const monthName = dateObj.format('MMMM');
+        const weekNum = getWeekOfMonth(dateObj);
+        key = `${dateObj.format('YYYY-MM')}-W${weekNum}|${monthName}-W${weekNum}`;
+      } else if (viewMode === 'monthly') {
+        key = dayjs(d.date).format('YYYY-MM');
+      } else {
+        // For hourly, group by hour
+        key = `${d.date} ${d.time?.split(':')[0] || '00'}:00`;
+      }
+      
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(d);
+    });
+    
+    return Object.entries(grouped)
+      .map(([key, values]) => {
+        const sortKey = viewMode === 'weekly' ? key.split('|')[0] : key;
+        const displayDate = viewMode === 'daily' ? dayjs(key).format('MMM D') : 
+                           viewMode === 'weekly' ? key.split('|')[1] : 
+                           viewMode === 'monthly' ? dayjs(key).format('MMM YYYY') :
+                           key; // hourly
+        
+        const boxData: any = {
+          date: displayDate,
+          sortKey: sortKey,
+          recordCount: values.length
+        };
+        
+        // Calculate box plot stats for each metric
+        selectedMetrics.forEach((metric, index) => {
+          const numericValues = values.map(v => {
+            const val = v[metric];
+            return typeof val === 'number' ? val : (parseFloat(val as string) || 0);
+          }).filter(v => {
+            if (metric === 'moistureContent') {
+              return v !== 0 && !isNaN(v);
+            }
+            return v !== 0;
+          });
+          
+          if (numericValues.length > 0) {
+            const stats = calculateBoxPlotStats(numericValues);
+            if (stats) {
+              boxData[`min${index + 1}`] = stats.min;
+              boxData[`q1${index + 1}`] = stats.q1;
+              boxData[`median${index + 1}`] = stats.median;
+              boxData[`q3${index + 1}`] = stats.q3;
+              boxData[`max${index + 1}`] = stats.max;
+              boxData[`lowerWhisker${index + 1}`] = stats.lowerWhisker;
+              boxData[`upperWhisker${index + 1}`] = stats.upperWhisker;
+              boxData[`outliers${index + 1}`] = stats.outliers;
+            }
+          }
+        });
+        
+        return boxData;
+      })
+      .filter(d => selectedMetrics.some((_, index) => d[`median${index + 1}`] !== undefined))
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .slice(0, viewMode === 'daily' ? 30 : viewMode === 'weekly' ? 12 : 6)
+      .reverse();
+  }, [filteredData, chartType, viewMode, selectedMetrics]);
 
   const selectedMetricsInfo = selectedMetrics.map(metricKey => 
     metrics.find(m => m.key === metricKey)!
@@ -425,6 +544,12 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
               <BarChartIcon fontSize="small" />
               Bar
+            </Box>
+          </ToggleButton>
+          <ToggleButton value="box">
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <CandlestickChartIcon fontSize="small" />
+              Box
             </Box>
           </ToggleButton>
         </ToggleButtonGroup>
@@ -973,7 +1098,7 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
               );
             })}
           </LineChart>
-            ) : (
+            ) : chartType === 'bar' ? (
             <BarChart 
               data={aggregatedData} 
               margin={{ top: 5, right: 30, left: 20, bottom: viewMode === 'hourly' ? 50 : 5 }}>
@@ -1082,6 +1207,224 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
               );
             })}
           </BarChart>
+            ) : chartType === 'box' ? (
+            <BarChart 
+              data={boxPlotData} 
+              margin={{ top: 5, right: 30, left: 20, bottom: viewMode === 'hourly' ? 50 : 5 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis 
+              dataKey="date" 
+              tick={{ fontSize: 12 }}
+              angle={viewMode === 'hourly' ? -45 : 0}
+              textAnchor={viewMode === 'hourly' ? 'end' : 'middle'}
+              height={viewMode === 'hourly' ? 60 : 30}
+            />
+            <YAxis />
+            <Tooltip 
+              content={({ active, payload, label }) => {
+                if (active && payload && payload.length > 0) {
+                  const data = payload[0].payload;
+                  return (
+                    <Box sx={{ p: 1.5, bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                      <Typography variant="body2" fontWeight="bold">{label}</Typography>
+                      {selectedMetrics.map((metric, index) => {
+                        const metricInfo = selectedMetricsInfo[index];
+                        const q1 = data[`q1${index + 1}`];
+                        const median = data[`median${index + 1}`];
+                        const q3 = data[`q3${index + 1}`];
+                        const min = data[`min${index + 1}`];
+                        const max = data[`max${index + 1}`];
+                        const outliers = data[`outliers${index + 1}`] || [];
+                        
+                        if (median === undefined) return null;
+                        
+                        return (
+                          <Box key={metric} sx={{ mt: index > 0 ? 1 : 0 }}>
+                            <Typography variant="body2" sx={{ color: CHART_COLORS[index], fontWeight: 'bold' }}>
+                              {metricInfo?.label}:
+                            </Typography>
+                            <Typography variant="caption" display="block">
+                              Min: {min?.toFixed(2)} {metricInfo?.unit}
+                            </Typography>
+                            <Typography variant="caption" display="block">
+                              Q1: {q1?.toFixed(2)} {metricInfo?.unit}
+                            </Typography>
+                            <Typography variant="caption" display="block">
+                              Median: {median?.toFixed(2)} {metricInfo?.unit}
+                            </Typography>
+                            <Typography variant="caption" display="block">
+                              Q3: {q3?.toFixed(2)} {metricInfo?.unit}
+                            </Typography>
+                            <Typography variant="caption" display="block">
+                              Max: {max?.toFixed(2)} {metricInfo?.unit}
+                            </Typography>
+                            {outliers.length > 0 && (
+                              <Typography variant="caption" display="block" color="warning.main">
+                                {outliers.length} outlier{outliers.length > 1 ? 's' : ''}
+                              </Typography>
+                            )}
+                          </Box>
+                        );
+                      })}
+                      {data.recordCount > 1 && (
+                        <Typography variant="caption" display="block" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                          Based on {data.recordCount} records
+                        </Typography>
+                      )}
+                    </Box>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Legend />
+            
+            {/* Render box plots for each metric */}
+            {selectedMetrics.map((metric, index) => {
+              const metricInfo = selectedMetricsInfo[index];
+              const barWidth = 40;
+              
+              return (
+                <React.Fragment key={metric}>
+                  {/* Box (Q1 to Q3) */}
+                  <Bar
+                    dataKey={`q3${index + 1}`}
+                    fill={CHART_COLORS[index]}
+                    fillOpacity={0.3}
+                    name={metricInfo?.label || metric}
+                    shape={(props: any) => {
+                      const { x, y, width, height, payload } = props;
+                      const q1 = payload[`q1${index + 1}`];
+                      const q3 = payload[`q3${index + 1}`];
+                      const median = payload[`median${index + 1}`];
+                      const lowerWhisker = payload[`lowerWhisker${index + 1}`];
+                      const upperWhisker = payload[`upperWhisker${index + 1}`];
+                      const outliers = payload[`outliers${index + 1}`] || [];
+                      
+                      if (!q1 || !q3 || !median) return <></>;
+                      
+                      const yScale = props.yScale || ((val: number) => y - (val / q3) * height);
+                      const centerX = x + width / 2;
+                      const boxWidth = Math.min(width * 0.8, barWidth);
+                      const boxX = centerX - boxWidth / 2;
+                      
+                      const q3Y = yScale(q3);
+                      const q1Y = yScale(q1);
+                      const medianY = yScale(median);
+                      const lowerWhiskerY = yScale(lowerWhisker);
+                      const upperWhiskerY = yScale(upperWhisker);
+                      
+                      return (
+                        <g>
+                          {/* Lower whisker */}
+                          <line
+                            x1={centerX}
+                            y1={q1Y}
+                            x2={centerX}
+                            y2={lowerWhiskerY}
+                            stroke={CHART_COLORS[index]}
+                            strokeWidth={1}
+                          />
+                          <line
+                            x1={centerX - boxWidth / 4}
+                            y1={lowerWhiskerY}
+                            x2={centerX + boxWidth / 4}
+                            y2={lowerWhiskerY}
+                            stroke={CHART_COLORS[index]}
+                            strokeWidth={1}
+                          />
+                          
+                          {/* Upper whisker */}
+                          <line
+                            x1={centerX}
+                            y1={q3Y}
+                            x2={centerX}
+                            y2={upperWhiskerY}
+                            stroke={CHART_COLORS[index]}
+                            strokeWidth={1}
+                          />
+                          <line
+                            x1={centerX - boxWidth / 4}
+                            y1={upperWhiskerY}
+                            x2={centerX + boxWidth / 4}
+                            y2={upperWhiskerY}
+                            stroke={CHART_COLORS[index]}
+                            strokeWidth={1}
+                          />
+                          
+                          {/* Box */}
+                          <rect
+                            x={boxX}
+                            y={q3Y}
+                            width={boxWidth}
+                            height={q1Y - q3Y}
+                            fill={CHART_COLORS[index]}
+                            fillOpacity={0.3}
+                            stroke={CHART_COLORS[index]}
+                            strokeWidth={2}
+                          />
+                          
+                          {/* Median line */}
+                          <line
+                            x1={boxX}
+                            y1={medianY}
+                            x2={boxX + boxWidth}
+                            y2={medianY}
+                            stroke={CHART_COLORS[index]}
+                            strokeWidth={2}
+                          />
+                          
+                          {/* Outliers */}
+                          {outliers.map((outlier: number, i: number) => (
+                            <circle
+                              key={i}
+                              cx={centerX}
+                              cy={yScale(outlier)}
+                              r={3}
+                              fill="none"
+                              stroke={CHART_COLORS[index]}
+                              strokeWidth={1}
+                            />
+                          ))}
+                        </g>
+                      );
+                    }}
+                  />
+                </React.Fragment>
+              );
+            })}
+            
+            {/* Control Limits */}
+            {showControlLimits && selectedMetrics.map((metric, index) => {
+              const lcl = filteredData.length > 0 ? filteredData[0][`${metric}Lcl`] as number : null;
+              const ucl = filteredData.length > 0 ? filteredData[0][`${metric}Ucl`] as number : null;
+              
+              return (
+                <React.Fragment key={`limits-${metric}`}>
+                  {lcl !== null && lcl !== undefined && (
+                    <ReferenceLine
+                      y={lcl}
+                      stroke={CHART_COLORS[index]}
+                      strokeDasharray="3 3"
+                      strokeWidth={1}
+                      label={{ value: `LCL (${selectedMetricsInfo[index]?.label})`, position: 'left' }}
+                    />
+                  )}
+                  {ucl !== null && ucl !== undefined && (
+                    <ReferenceLine
+                      y={ucl}
+                      stroke={CHART_COLORS[index]}
+                      strokeDasharray="3 3"
+                      strokeWidth={1}
+                      label={{ value: `UCL (${selectedMetricsInfo[index]?.label})`, position: 'left' }}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </BarChart>
+            ) : (
+            <></>
             )}
           </ResponsiveContainer>
         ) : (
