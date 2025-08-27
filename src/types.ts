@@ -71,6 +71,7 @@ export interface QualityData {
   hwSr?: number;
   swCy?: number;
   swOsr?: number;
+  mcSr?: number;
   shortFiberPercent?: number;  // %
   longFiberPercent?: number;  // %
   brokePercent?: number;  // %

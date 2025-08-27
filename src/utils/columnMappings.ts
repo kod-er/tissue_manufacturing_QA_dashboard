@@ -79,6 +79,7 @@ export const columnMappings: ColumnMapping = {
   hwSr: ['HW SR', 'HW Schopper', 'HW_SR'],
   swCy: ['SW CY', 'SW Consistency', 'SW_CY'],
   swOsr: ['SW OSR', 'SW Schopper', 'SW_OSR'],
+  mcSr: ['M/C SR', 'MC SR', 'Machine SR', 'M_C_SR'],
   shortFiberPercent: ['Short Fiber (%)', 'Short Fiber %', 'SF %', 'Short_Fiber'],
   longFiberPercent: ['Long Fiber (%)', 'Long Fiber %', 'LF %', 'Long_Fiber'],
   brokePercent: ['Broke (%)', 'Broke %', 'Broke Percentage', 'BROKE'],

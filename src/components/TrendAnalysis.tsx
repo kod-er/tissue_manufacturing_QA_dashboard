@@ -151,6 +151,10 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
     { key: 'release', label: 'Release', unit: '' },
     { key: 'map', label: 'MAP', unit: '' },
     { key: 'wsrKgHrs', label: 'WSR Kg/Hrs', unit: 'Kg/Hrs' },
+    { key: 'shortFiberPercent', label: 'Short Fiber (%)', unit: '%' },
+    { key: 'longFiberPercent', label: 'Long Fiber (%)', unit: '%' },
+    { key: 'brokePercent', label: 'Broke (%)', unit: '%' },
+    { key: 'mcSr', label: 'M/C SR', unit: '' },
   ];
 
   // Filter data based on shift, quality, GSM, and date range
