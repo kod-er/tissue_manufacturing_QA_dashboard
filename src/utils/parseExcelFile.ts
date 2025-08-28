@@ -146,6 +146,7 @@ export async function parseExcelFile(file: File): Promise<ParseResult> {
               hwSr: getValue('hwSr'),
               swCy: getValue('swCy'),
               swOsr: getValue('swOsr'),
+              mcSr: getValue('mcSr'),
               shortFiberPercent: getValue('shortFiberPercent'),
               longFiberPercent: getValue('longFiberPercent'),
               brokePercent: getValue('brokePercent'),
