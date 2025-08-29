@@ -565,7 +565,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
                 {allRemarks.map((item, idx) => (
                   <Box key={idx} sx={{ mb: 1, pl: 2 }}>
                     <Typography variant="body2">
-                      • {item.time && `[${item.time}]`} {item.shift && `Shift ${item.shift}:`} {item.remarks}
+                      • {item.time && `${item.time}`} {item.shift && `Shift ${item.shift}:`} {item.remarks}
                     </Typography>
                   </Box>
                 ))}
@@ -580,7 +580,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ data }) => {
                 {allBreaks.map((item, idx) => (
                   <Box key={idx} sx={{ mb: 1, pl: 2 }}>
                     <Typography variant="body2" color="error.dark">
-                      • {item.time && `[${item.time}]`} {item.shift && `Shift ${item.shift}:`} {item.break}
+                      • {item.time && `${item.time}`} {item.shift && `Shift ${item.shift}:`} {item.break}
                     </Typography>
                   </Box>
                 ))}

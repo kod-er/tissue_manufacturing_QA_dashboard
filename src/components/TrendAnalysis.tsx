@@ -1045,7 +1045,6 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
                 return null;
               }}
             />
-            <Legend />
             
             {selectedMetrics.map((metric, index) => (
               <Line
@@ -1164,7 +1163,6 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
                 return null;
               }}
             />
-            <Legend />
             
             {selectedMetrics.map((metric, index) => (
               <Bar
@@ -1281,7 +1279,6 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
                 return null;
               }}
             />
-            <Legend />
             
             {/* Render box plots for each metric */}
             {selectedMetrics.map((metric, index) => {
@@ -1450,6 +1447,41 @@ const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ data }) => {
           </Box>
         )}
         </Box>
+        
+        {/* Color Legend for Selected Metrics */}
+        {selectedMetrics.length > 0 && (
+          <Box sx={{ 
+            display: 'flex', 
+            gap: 2, 
+            flexWrap: 'wrap', 
+            mt: 2, 
+            p: 1.5, 
+            bgcolor: 'background.paper', 
+            borderRadius: 1, 
+            border: 1, 
+            borderColor: 'divider',
+            justifyContent: 'center'
+          }}>
+            {selectedMetrics.map((metric, index) => {
+              const metricInfo = metrics.find(m => m.key === metric);
+              return (
+                <Box key={metric} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box
+                    sx={{
+                      width: 24,
+                      height: 4,
+                      bgcolor: CHART_COLORS[index],
+                      borderRadius: 1
+                    }}
+                  />
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    {metricInfo?.label}
+                  </Typography>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
       </Box>
     </Paper>
   );

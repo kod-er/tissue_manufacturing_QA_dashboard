@@ -209,9 +209,21 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataParsed }) => {
               return value;
             };
             
+            // Format time value - convert decimal hours to HH:MM format
+            const timeValue = getValue('time', '');
+            let formattedTime = '';
+            if (timeValue && typeof timeValue === 'number') {
+              // Convert decimal hours to HH:MM format
+              const hours = Math.floor(timeValue);
+              const minutes = Math.round((timeValue - hours) * 60);
+              formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            } else {
+              formattedTime = String(timeValue || '');
+            }
+
             const dataRow: QualityData = {
               date,
-              time: getValue('time', ''),
+              time: formattedTime,
               shift: getValue('shift', ''),
               labExecutive: getValue('labExecutive', ''),
               machineShiftIncharge: getValue('machineShiftIncharge', ''),

@@ -88,9 +88,21 @@ export async function parseExcelFile(file: File): Promise<ParseResult> {
             };
             
             // Build complete data row with all fields
+            // Format time value - convert decimal hours to HH:MM format
+            const timeValue = getValue('time', '');
+            let formattedTime = '';
+            if (timeValue && typeof timeValue === 'number') {
+              // Convert decimal hours to HH:MM format
+              const hours = Math.floor(timeValue);
+              const minutes = Math.round((timeValue - hours) * 60);
+              formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            } else {
+              formattedTime = String(timeValue || '');
+            }
+
             const rowData: QualityData = {
               date: dateValue,
-              time: String(getValue('time', '') || ''),
+              time: formattedTime,
               shift: String(getValue('shift', '') || ''),
               labExecutive: String(getValue('labExecutive', '') || ''),
               machineShiftIncharge: String(getValue('machineShiftIncharge', '') || ''),
