@@ -36,6 +36,8 @@ export interface CostingData {
   totalProduction: number;
   totalCost: number;
   costPerKg: number;
+  costPerTonMC?: number; // Per ton cost (MC Production) from Excel
+  costPerTonFinish?: number; // Per ton cost (Finish Production) from Excel
   fiberCost: number;
   chemicalsCost: number;
   steamCost: number;
@@ -115,7 +117,7 @@ export async function parseCostingExcel(file: File): Promise<CostingData[]> {
         });
         
         // Parse consumption data
-        const consumptionData = parseConsumptionSheet(workbook);
+        const { consumptionMap, perTonCostMap } = parseConsumptionSheet(workbook);
         
         // Parse chemical consumption
         const chemicalData = parseChemicalSheet(workbook);
@@ -124,7 +126,7 @@ export async function parseCostingExcel(file: File): Promise<CostingData[]> {
         const utilityData = parseUtilityData(workbook);
         
         // Combine all data to create costing records
-        const costingData = combineCostingData(productionData, consumptionData, chemicalData, utilityData, productionLosses);
+        const costingData = combineCostingData(productionData, consumptionMap, chemicalData, utilityData, productionLosses, perTonCostMap);
         
         resolve(costingData);
       } catch (error) {
@@ -351,20 +353,67 @@ function parseDailySheets(workbook: XLSX.WorkBook): Map<string, ProductionLoss[]
   return dailyLossesMap;
 }
 
-function parseConsumptionSheet(workbook: XLSX.WorkBook): Map<string, RawMaterialConsumption[]> {
+interface ConsumptionSheetData {
+  consumptionMap: Map<string, RawMaterialConsumption[]>;
+  perTonCostMap: Map<string, { mcProduction?: number; finishProduction?: number }>;
+}
+
+function parseConsumptionSheet(workbook: XLSX.WorkBook): ConsumptionSheetData {
   const sheet = workbook.Sheets['Consumption'];
-  if (!sheet) return new Map();
+  if (!sheet) return { consumptionMap: new Map(), perTonCostMap: new Map() };
   
   const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
   const consumptionMap = new Map<string, RawMaterialConsumption[]>();
+  const perTonCostMap = new Map<string, { mcProduction?: number; finishProduction?: number }>();
+  
+  // Find column indices for per ton cost columns
+  // Based on the Excel analysis, they are at columns 85 and 86 (0-indexed: 84 and 85)
+  // But let's still search to be safe
+  let perTonMCCol = -1;
+  let perTonFinishCol = -1;
+  
+  // Check row 3 (index 2) for column headers - this is where the headers are
+  if (jsonData[2]) {
+    for (let col = 0; col < jsonData[2].length; col++) {
+      const header = jsonData[2][col]?.toString() || '';
+      if (header.toLowerCase().includes('per ton cost') && header.toLowerCase().includes('mc production')) {
+        perTonMCCol = col;
+        console.log(`Found MC Production column at: ${col}, header: ${header}`);
+      }
+      if (header.toLowerCase().includes('per ton cost') && header.toLowerCase().includes('finish production')) {
+        perTonFinishCol = col;
+        console.log(`Found Finish Production column at: ${col}, header: ${header}`);
+      }
+    }
+  }
+  
+  // Fallback to known positions if not found
+  if (perTonMCCol === -1 && jsonData[2] && jsonData[2][84]) {
+    const header = jsonData[2][84]?.toString() || '';
+    if (header.toLowerCase().includes('per ton')) {
+      perTonMCCol = 84;
+      console.log(`Using fallback MC column at 84: ${header}`);
+    }
+  }
+  if (perTonFinishCol === -1 && jsonData[2] && jsonData[2][85]) {
+    const header = jsonData[2][85]?.toString() || '';
+    if (header.toLowerCase().includes('per ton')) {
+      perTonFinishCol = 85;
+      console.log(`Using fallback Finish column at 85: ${header}`);
+    }
+  }
+  
+  console.log(`Per ton cost columns - MC: ${perTonMCCol}, Finish: ${perTonFinishCol}`);
   
   // Get material names from row 2 and rates from row 4
   const materials: string[] = [];
   const rates: number[] = [];
   
   for (let col = 1; col < jsonData[1].length; col++) {
-    if (jsonData[1][col]) {
-      materials.push(jsonData[1][col]);
+    const header = jsonData[1][col]?.toString() || '';
+    // Skip per ton cost columns when collecting material names
+    if (col !== perTonMCCol && col !== perTonFinishCol && header && !header.toLowerCase().includes('per ton cost')) {
+      materials.push(header);
       rates.push(parseFloat(jsonData[3][col]) || 0);
     }
   }
@@ -377,16 +426,40 @@ function parseConsumptionSheet(workbook: XLSX.WorkBook): Map<string, RawMaterial
     const date = formatDate(dateValue);
     const dayConsumption: RawMaterialConsumption[] = [];
     
-    for (let col = 1; col <= materials.length; col++) {
-      const quantity = parseFloat(jsonData[row][col]) || 0;
-      if (quantity > 0) {
-        dayConsumption.push({
-          date,
-          material: materials[col - 1],
-          quantity,
-          rate: rates[col - 1],
-          amount: quantity * rates[col - 1]
-        });
+    // Parse material consumption
+    let materialIndex = 0;
+    for (let col = 1; col < jsonData[row].length; col++) {
+      // Skip per ton cost columns
+      if (col === perTonMCCol || col === perTonFinishCol) continue;
+      
+      if (materialIndex < materials.length) {
+        const quantity = parseFloat(jsonData[row][col]) || 0;
+        if (quantity > 0) {
+          dayConsumption.push({
+            date,
+            material: materials[materialIndex],
+            quantity,
+            rate: rates[materialIndex],
+            amount: quantity * rates[materialIndex]
+          });
+        }
+        materialIndex++;
+      }
+    }
+    
+    // Parse per ton costs
+    if (perTonMCCol >= 0 || perTonFinishCol >= 0) {
+      const perTonCosts: { mcProduction?: number; finishProduction?: number } = {};
+      
+      if (perTonMCCol >= 0) {
+        perTonCosts.mcProduction = parseFloat(jsonData[row][perTonMCCol]) || undefined;
+      }
+      if (perTonFinishCol >= 0) {
+        perTonCosts.finishProduction = parseFloat(jsonData[row][perTonFinishCol]) || undefined;
+      }
+      
+      if (perTonCosts.mcProduction || perTonCosts.finishProduction) {
+        perTonCostMap.set(date, perTonCosts);
       }
     }
     
@@ -395,7 +468,7 @@ function parseConsumptionSheet(workbook: XLSX.WorkBook): Map<string, RawMaterial
     }
   }
   
-  return consumptionMap;
+  return { consumptionMap, perTonCostMap };
 }
 
 function parseChemicalSheet(workbook: XLSX.WorkBook): Map<string, ChemicalConsumption[]> {
@@ -512,7 +585,8 @@ function combineCostingData(
   consumptionData: Map<string, RawMaterialConsumption[]>,
   chemicalData: Map<string, ChemicalConsumption[]>,
   utilityData: Map<string, UtilityConsumption>,
-  productionLosses: Map<string, ProductionLoss[]>
+  productionLosses: Map<string, ProductionLoss[]>,
+  perTonCostMap: Map<string, { mcProduction?: number; finishProduction?: number }>
 ): CostingData[] {
   const costingData: CostingData[] = [];
   
@@ -596,11 +670,16 @@ function combineCostingData(
     const availableHours = 24 - totalTimeLoss;
     const productionEfficiency = availableHours > 0 ? (availableHours / 24) * 100 : 0;
     
+    // Get per ton costs from Excel if available
+    const perTonCosts = perTonCostMap.get(date);
+    
     costingData.push({
       date,
       totalProduction,
       totalCost,
       costPerKg: totalCost / (totalProduction * 1000),
+      costPerTonMC: perTonCosts?.mcProduction,
+      costPerTonFinish: perTonCosts?.finishProduction,
       fiberCost,
       chemicalsCost,
       steamCost: steamCost + lpgCost, // Combine steam and LPG as thermal energy
