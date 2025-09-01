@@ -53,11 +53,13 @@ import {
 import dayjs from 'dayjs';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
+import isoWeek from 'dayjs/plugin/isoWeek';
 import { CostingData as ImportedCostingData, ProductionLoss } from '../utils/parseCostingData';
 import CostingUpload from './CostingUpload';
 
 dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
+dayjs.extend(isoWeek);
 
 // Define interfaces for costing data
 interface CostBreakdown {
@@ -777,64 +779,265 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
       {/* Filters */}
       <Paper sx={{ p: 2, mb: 3 }}>
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Date Range Filter */}
+          {/* Date Range Filter - Adaptive based on time range */}
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
             <DateRangeIcon sx={{ color: 'action.active' }} />
-            <TextField
-              type="date"
-              size="small"
-              label="Start Date"
-              value={dateRange.start}
-              onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-              InputLabelProps={{ shrink: true }}
-              inputProps={{
-                min: minDate,
-                max: maxDate
-              }}
-              sx={{ width: 150 }}
-            />
-            <Typography variant="body2">to</Typography>
-            <TextField
-              type="date"
-              size="small"
-              label="End Date"
-              value={dateRange.end}
-              onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-              InputLabelProps={{ shrink: true }}
-              inputProps={{
-                min: dateRange.start || minDate,
-                max: maxDate
-              }}
-              sx={{ width: 150 }}
-            />
+            {timeRange === 'monthly' ? (
+              <>
+                <TextField
+                  type="month"
+                  size="small"
+                  label="Start Month"
+                  value={dateRange.start ? dayjs(dateRange.start).format('YYYY-MM') : ''}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setDateRange(prev => ({ ...prev, start: `${e.target.value}-01` }));
+                    } else {
+                      setDateRange(prev => ({ ...prev, start: '' }));
+                    }
+                  }}
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{
+                    max: dateRange.end ? dayjs(dateRange.end).format('YYYY-MM') : dayjs(maxDate).format('YYYY-MM')
+                  }}
+                  sx={{ width: 150 }}
+                />
+                <Typography variant="body2">to</Typography>
+                <TextField
+                  type="month"
+                  size="small"
+                  label="End Month"
+                  value={dateRange.end ? dayjs(dateRange.end).format('YYYY-MM') : ''}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const endOfMonth = dayjs(e.target.value).endOf('month').format('YYYY-MM-DD');
+                      setDateRange(prev => ({ ...prev, end: endOfMonth }));
+                    } else {
+                      setDateRange(prev => ({ ...prev, end: '' }));
+                    }
+                  }}
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{
+                    min: dateRange.start ? dayjs(dateRange.start).format('YYYY-MM') : undefined,
+                    max: dayjs(maxDate).format('YYYY-MM')
+                  }}
+                  sx={{ width: 150 }}
+                />
+              </>
+            ) : timeRange === 'weekly' ? (
+              <>
+                <TextField
+                  type="week"
+                  size="small"
+                  label="Start Week"
+                  value={dateRange.start ? `${dayjs(dateRange.start).format('YYYY')}-W${dayjs(dateRange.start).isoWeek().toString().padStart(2, '0')}` : ''}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const [year, week] = e.target.value.split('-W');
+                      const date = dayjs().year(parseInt(year)).isoWeek(parseInt(week)).startOf('isoWeek');
+                      setDateRange(prev => ({ ...prev, start: date.format('YYYY-MM-DD') }));
+                    } else {
+                      setDateRange(prev => ({ ...prev, start: '' }));
+                    }
+                  }}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: 150 }}
+                />
+                <Typography variant="body2">to</Typography>
+                <TextField
+                  type="week"
+                  size="small"
+                  label="End Week"
+                  value={dateRange.end ? `${dayjs(dateRange.end).format('YYYY')}-W${dayjs(dateRange.end).isoWeek().toString().padStart(2, '0')}` : ''}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const [year, week] = e.target.value.split('-W');
+                      const date = dayjs().year(parseInt(year)).isoWeek(parseInt(week)).endOf('isoWeek');
+                      setDateRange(prev => ({ ...prev, end: date.format('YYYY-MM-DD') }));
+                    } else {
+                      setDateRange(prev => ({ ...prev, end: '' }));
+                    }
+                  }}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: 150 }}
+                />
+              </>
+            ) : (
+              <>
+                <TextField
+                  type="date"
+                  size="small"
+                  label="Start Date"
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{
+                    min: minDate,
+                    max: maxDate
+                  }}
+                  sx={{ width: 150 }}
+                />
+                <Typography variant="body2">to</Typography>
+                <TextField
+                  type="date"
+                  size="small"
+                  label="End Date"
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{
+                    min: dateRange.start || minDate,
+                    max: maxDate
+                  }}
+                  sx={{ width: 150 }}
+                />
+              </>
+            )}
           </Box>
 
-          {/* Quick Date Presets */}
+          {/* Quick Date Presets - Adaptive based on time range */}
           <Box sx={{ display: 'flex', gap: 0.5 }}>
-            <Button
-              size="small"
-              onClick={() => {
-                const sevenDaysAgo = dayjs(maxDate).subtract(7, 'days').format('YYYY-MM-DD');
-                setDateRange({
-                  start: sevenDaysAgo < minDate ? minDate : sevenDaysAgo,
-                  end: maxDate
-                });
-              }}
-            >
-              Last 7 days
-            </Button>
-            <Button
-              size="small"
-              onClick={() => {
-                const thirtyDaysAgo = dayjs(maxDate).subtract(30, 'days').format('YYYY-MM-DD');
-                setDateRange({
-                  start: thirtyDaysAgo < minDate ? minDate : thirtyDaysAgo,
-                  end: maxDate
-                });
-              }}
-            >
-              Last 30 days
-            </Button>
+            {timeRange === 'monthly' ? (
+              <>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const currentMonth = dayjs(maxDate).startOf('month');
+                    setDateRange({
+                      start: currentMonth.format('YYYY-MM-DD'),
+                      end: currentMonth.endOf('month').format('YYYY-MM-DD')
+                    });
+                  }}
+                >
+                  This Month
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const lastMonth = dayjs(maxDate).subtract(1, 'month').startOf('month');
+                    setDateRange({
+                      start: lastMonth.format('YYYY-MM-DD'),
+                      end: lastMonth.endOf('month').format('YYYY-MM-DD')
+                    });
+                  }}
+                >
+                  Last Month
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const threeMonthsAgo = dayjs(maxDate).subtract(3, 'months').startOf('month');
+                    setDateRange({
+                      start: threeMonthsAgo.format('YYYY-MM-DD'),
+                      end: dayjs(maxDate).endOf('month').format('YYYY-MM-DD')
+                    });
+                  }}
+                >
+                  Last 3 Months
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const sixMonthsAgo = dayjs(maxDate).subtract(6, 'months').startOf('month');
+                    setDateRange({
+                      start: sixMonthsAgo.format('YYYY-MM-DD'),
+                      end: dayjs(maxDate).endOf('month').format('YYYY-MM-DD')
+                    });
+                  }}
+                >
+                  Last 6 Months
+                </Button>
+              </>
+            ) : timeRange === 'weekly' ? (
+              <>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const thisWeek = dayjs(maxDate).startOf('isoWeek');
+                    setDateRange({
+                      start: thisWeek.format('YYYY-MM-DD'),
+                      end: thisWeek.endOf('isoWeek').format('YYYY-MM-DD')
+                    });
+                  }}
+                >
+                  This Week
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const lastWeek = dayjs(maxDate).subtract(1, 'week').startOf('isoWeek');
+                    setDateRange({
+                      start: lastWeek.format('YYYY-MM-DD'),
+                      end: lastWeek.endOf('isoWeek').format('YYYY-MM-DD')
+                    });
+                  }}
+                >
+                  Last Week
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const fourWeeksAgo = dayjs(maxDate).subtract(4, 'weeks').startOf('isoWeek');
+                    setDateRange({
+                      start: fourWeeksAgo.format('YYYY-MM-DD'),
+                      end: dayjs(maxDate).endOf('isoWeek').format('YYYY-MM-DD')
+                    });
+                  }}
+                >
+                  Last 4 Weeks
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setDateRange({
+                      start: dayjs(maxDate).format('YYYY-MM-DD'),
+                      end: dayjs(maxDate).format('YYYY-MM-DD')
+                    });
+                  }}
+                >
+                  Today
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const yesterday = dayjs(maxDate).subtract(1, 'day');
+                    setDateRange({
+                      start: yesterday.format('YYYY-MM-DD'),
+                      end: yesterday.format('YYYY-MM-DD')
+                    });
+                  }}
+                >
+                  Yesterday
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const sevenDaysAgo = dayjs(maxDate).subtract(7, 'days').format('YYYY-MM-DD');
+                    setDateRange({
+                      start: sevenDaysAgo < minDate ? minDate : sevenDaysAgo,
+                      end: maxDate
+                    });
+                  }}
+                >
+                  Last 7 Days
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const thirtyDaysAgo = dayjs(maxDate).subtract(30, 'days').format('YYYY-MM-DD');
+                    setDateRange({
+                      start: thirtyDaysAgo < minDate ? minDate : thirtyDaysAgo,
+                      end: maxDate
+                    });
+                  }}
+                >
+                  Last 30 Days
+                </Button>
+              </>
+            )}
             <Button
               size="small"
               onClick={() => setDateRange({
