@@ -54,6 +54,16 @@ export interface CostingData {
   productionLosses?: ProductionLoss[];
   totalTimeLoss?: number; // Total time loss in hours
   productionEfficiency?: number; // Percentage
+  // Utility consumption fields
+  steamConsumption?: number; // MT of steam
+  gasConsumption?: number; // SCM (Standard Cubic Meter)
+  waterConsumption?: number; // m³
+  powerConsumption?: number; // kWh
+  // Deckle fields
+  avgDeckle?: number; // Average deckle in CM
+  deckleLoss?: number; // Deckle loss in CM
+  // Chemical consumption map
+  chemicalConsumption?: { [chemical: string]: { quantity: number; cost: number; unit?: string } };
 }
 
 // Chemical rates per kg (estimated for demo)
@@ -673,6 +683,39 @@ function combineCostingData(
     // Get per ton costs from Excel if available
     const perTonCosts = perTonCostMap.get(date);
     
+    // Create chemical consumption map
+    const chemicalConsumptionMap: { [chemical: string]: { quantity: number; cost: number; unit?: string } } = {};
+    dayChemicals.forEach(c => {
+      const rate = CHEMICAL_RATES[c.chemical] || CHEMICAL_RATES.default;
+      chemicalConsumptionMap[c.chemical] = {
+        quantity: c.quantity,
+        cost: c.quantity * rate,
+        unit: c.unit
+      };
+    });
+    
+    // Calculate utility consumption values
+    let steamConsumption: number;
+    let gasConsumption: number;
+    let waterConsumption: number;
+    let powerConsumption: number;
+    
+    if (utilityConsumption) {
+      steamConsumption = utilityConsumption.steam;
+      gasConsumption = utilityConsumption.lpg * 22.4 * 1000; // Convert MT of LPG to SCM (approximate)
+      waterConsumption = utilityConsumption.water;
+      powerConsumption = utilityConsumption.power > 0 ? utilityConsumption.power : totalProduction * 1100;
+    } else {
+      steamConsumption = totalProduction * 3.2;
+      gasConsumption = totalProduction * 25 * 22.4; // kg to SCM conversion
+      waterConsumption = totalProduction * 60;
+      powerConsumption = totalProduction * 1100;
+    }
+    
+    // Calculate deckle values (example values, should be from actual data)
+    const avgDeckle = 260; // Average deckle width in CM
+    const deckleLoss = Math.random() * 8 + 2; // Random between 2-10 CM for demo
+    
     costingData.push({
       date,
       totalProduction,
@@ -695,7 +738,17 @@ function combineCostingData(
       chemicals: dayChemicals,
       productionLosses: dayLosses,
       totalTimeLoss,
-      productionEfficiency
+      productionEfficiency,
+      // Utility consumption fields
+      steamConsumption,
+      gasConsumption,
+      waterConsumption,
+      powerConsumption,
+      // Deckle fields
+      avgDeckle,
+      deckleLoss,
+      // Chemical consumption map
+      chemicalConsumption: chemicalConsumptionMap
     });
   });
   

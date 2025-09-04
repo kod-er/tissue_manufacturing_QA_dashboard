@@ -2707,6 +2707,700 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
           </Paper>
         </Box>
       )}
+
+      {/* Utility Consumption Analysis */}
+      {importedData && importedData.length > 0 && (
+        <Box sx={{ mt: 3 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Utility Consumption Analysis
+            </Typography>
+            
+            {/* Calculate utility metrics */}
+            {(() => {
+              const filteredUtilityData = importedData.filter(day => {
+                if (!dateRange.start || !dateRange.end) return true;
+                const itemDate = dayjs(day.date);
+                const startDate = dayjs(dateRange.start);
+                const endDate = dayjs(dateRange.end);
+                return itemDate.isAfter(startDate.subtract(1, 'day')) && itemDate.isBefore(endDate.add(1, 'day'));
+              });
+              
+              // Aggregate utility consumption
+              const totalProduction = filteredUtilityData.reduce((sum, d) => sum + d.totalProduction, 0);
+              const avgSteamPerTon = filteredUtilityData.reduce((sum, d) => sum + ((d.steamConsumption || 0) / d.totalProduction), 0) / filteredUtilityData.length;
+              const avgGasPerTon = filteredUtilityData.reduce((sum, d) => sum + ((d.gasConsumption || 0) / d.totalProduction), 0) / filteredUtilityData.length;
+              const avgWaterPerTon = filteredUtilityData.reduce((sum, d) => sum + ((d.waterConsumption || 0) / d.totalProduction), 0) / filteredUtilityData.length;
+              const avgPowerPerTon = filteredUtilityData.reduce((sum, d) => sum + ((d.powerConsumption || 0) / d.totalProduction), 0) / filteredUtilityData.length;
+              
+              // Deckle loss analysis
+              const totalDeckleLoss = filteredUtilityData.reduce((sum, d) => sum + (d.deckleLoss || 0), 0);
+              const avgDeckleLoss = totalDeckleLoss / filteredUtilityData.length;
+              const deckleLossPercentage = (totalDeckleLoss / totalProduction) * 100;
+              
+              // Chemical consumption analysis
+              const chemicalConsumption = new Map<string, { quantity: number; cost: number }>();
+              filteredUtilityData.forEach(day => {
+                if (day.chemicalConsumption) {
+                  Object.entries(day.chemicalConsumption).forEach(([chemical, data]: [string, any]) => {
+                    const existing = chemicalConsumption.get(chemical) || { quantity: 0, cost: 0 };
+                    chemicalConsumption.set(chemical, {
+                      quantity: existing.quantity + (data.quantity || 0),
+                      cost: existing.cost + (data.cost || 0)
+                    });
+                  });
+                }
+              });
+              
+              const topChemicals = Array.from(chemicalConsumption.entries())
+                .map(([name, data]) => ({ name, ...data, perTon: data.quantity / totalProduction }))
+                .sort((a, b) => b.cost - a.cost)
+                .slice(0, 5);
+              
+              const utilityData = [
+                { utility: 'Steam', consumption: avgSteamPerTon, unit: 'MT/MT', color: '#ff5722' },
+                { utility: 'Natural Gas', consumption: avgGasPerTon, unit: 'SCM/MT', color: '#ff9800' },
+                { utility: 'Water', consumption: avgWaterPerTon, unit: 'm³/MT', color: '#2196f3' },
+                { utility: 'Power', consumption: avgPowerPerTon, unit: 'kWh/MT', color: '#4caf50' }
+              ];
+              
+              return (
+                <>
+                  {/* Utility KPI Cards */}
+                  <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <BoltIcon color="primary" />
+                          <Typography color="textSecondary" variant="body2">
+                            Power Consumption
+                          </Typography>
+                        </Box>
+                        <Typography variant="h5">
+                          {avgPowerPerTon.toFixed(1)} kWh/MT
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Total: {(avgPowerPerTon * totalProduction / 1000).toFixed(0)} MWh
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <LocalShippingIcon color="error" />
+                          <Typography color="textSecondary" variant="body2">
+                            Steam Consumption
+                          </Typography>
+                        </Box>
+                        <Typography variant="h5">
+                          {avgSteamPerTon.toFixed(2)} MT/MT
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Total: {(avgSteamPerTon * totalProduction).toFixed(0)} MT
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <WaterDropIcon color="primary" />
+                          <Typography color="textSecondary" variant="body2">
+                            Water Consumption
+                          </Typography>
+                        </Box>
+                        <Typography variant="h5">
+                          {avgWaterPerTon.toFixed(1)} m³/MT
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Total: {(avgWaterPerTon * totalProduction).toFixed(0)} m³
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <BuildIcon color="warning" />
+                          <Typography color="textSecondary" variant="body2">
+                            Deckle Loss
+                          </Typography>
+                        </Box>
+                        <Typography variant="h5" color={deckleLossPercentage > 5 ? 'error' : 'inherit'}>
+                          {deckleLossPercentage.toFixed(2)}%
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Avg: {avgDeckleLoss.toFixed(1)} CM/day
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Box>
+                  
+                  {/* Charts Row */}
+                  <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 3 }}>
+                    {/* Utility Consumption Bar Chart */}
+                    <Box sx={{ flex: '1 1 400px', minWidth: 300 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Utility Consumption per MT
+                      </Typography>
+                      <Box sx={{ height: 300 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={utilityData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="utility" />
+                            <YAxis />
+                            <Tooltip />
+                            <Bar dataKey="consumption" fill="#8884d8">
+                              {utilityData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Box>
+                    
+                    {/* Top Chemical Consumption */}
+                    <Box sx={{ flex: '1 1 300px', minWidth: 250 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Top Chemical Consumption
+                      </Typography>
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Chemical</TableCell>
+                              <TableCell align="right">Qty (Kg)</TableCell>
+                              <TableCell align="right">Kg/MT</TableCell>
+                              <TableCell align="right">Cost</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {topChemicals.map((chemical) => (
+                              <TableRow key={chemical.name}>
+                                <TableCell>{chemical.name}</TableCell>
+                                <TableCell align="right">{chemical.quantity.toFixed(0)}</TableCell>
+                                <TableCell align="right">{chemical.perTon.toFixed(2)}</TableCell>
+                                <TableCell align="right">{formatIndianCurrency(chemical.cost)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Box>
+                  </Box>
+                  
+                  {/* Consumption Trend Chart */}
+                  <Typography variant="subtitle2" gutterBottom>
+                    Daily Consumption Trends
+                  </Typography>
+                  <Box sx={{ height: 300 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={filteredUtilityData.slice(-15).map(d => ({
+                        date: dayjs(d.date).format('MMM DD'),
+                        steam: (d.steamConsumption || 0) / d.totalProduction,
+                        gas: (d.gasConsumption || 0) / d.totalProduction,
+                        water: (d.waterConsumption || 0) / d.totalProduction,
+                        power: ((d.powerConsumption || 0) / d.totalProduction) / 10 // Scale down for visibility
+                      }))}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="steam" stroke="#ff5722" name="Steam (MT/MT)" strokeWidth={2} />
+                        <Line type="monotone" dataKey="gas" stroke="#ff9800" name="Gas (SCM/MT)" strokeWidth={2} />
+                        <Line type="monotone" dataKey="water" stroke="#2196f3" name="Water (m³/MT)" strokeWidth={2} />
+                        <Line type="monotone" dataKey="power" stroke="#4caf50" name="Power (kWh/MT ÷10)" strokeWidth={2} strokeDasharray="5 5" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </>
+              );
+            })()}
+          </Paper>
+        </Box>
+      )}
+
+      {/* Production vs Cost Correlation Analysis */}
+      {importedData && importedData.length > 0 && (
+        <Box sx={{ mt: 3 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Production Efficiency & Cost Correlation
+            </Typography>
+            
+            {(() => {
+              const correlationData = importedData
+                .filter(day => {
+                  if (!dateRange.start || !dateRange.end) return true;
+                  const itemDate = dayjs(day.date);
+                  const startDate = dayjs(dateRange.start);
+                  const endDate = dayjs(dateRange.end);
+                  return itemDate.isAfter(startDate.subtract(1, 'day')) && itemDate.isBefore(endDate.add(1, 'day'));
+                })
+                .map(day => ({
+                  date: dayjs(day.date).format('MMM DD'),
+                  production: day.totalProduction,
+                  costPerTon: day.costPerTonMC || 0,
+                  efficiency: day.productionEfficiency || 0,
+                  deckle: day.avgDeckle || 0,
+                  deckleLoss: day.deckleLoss || 0
+                }));
+              
+              return (
+                <Box sx={{ height: 400 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={correlationData.slice(-20)}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis yAxisId="left" label={{ value: 'Production (MT) / Efficiency (%)', angle: -90, position: 'insideLeft' }} />
+                      <YAxis yAxisId="right" orientation="right" label={{ value: 'Cost per MT (Rs)', angle: 90, position: 'insideRight' }} />
+                      <Tooltip />
+                      <Legend />
+                      <Line yAxisId="left" type="monotone" dataKey="production" stroke="#2196f3" name="Production (MT)" strokeWidth={2} />
+                      <Line yAxisId="left" type="monotone" dataKey="efficiency" stroke="#4caf50" name="Efficiency (%)" strokeWidth={2} />
+                      <Line yAxisId="right" type="monotone" dataKey="costPerTon" stroke="#ff5722" name="Cost/MT" strokeWidth={2} strokeDasharray="5 5" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+              );
+            })()}
+          </Paper>
+        </Box>
+      )}
+
+      {/* Enhanced Chemical Consumption Analysis */}
+      {importedData && importedData.length > 0 && (
+        <Box sx={{ mt: 3 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Detailed Chemical Consumption Analysis
+            </Typography>
+            
+            {(() => {
+              const filteredData = importedData.filter(day => {
+                if (!dateRange.start || !dateRange.end) return true;
+                const itemDate = dayjs(day.date);
+                const startDate = dayjs(dateRange.start);
+                const endDate = dayjs(dateRange.end);
+                return itemDate.isAfter(startDate.subtract(1, 'day')) && itemDate.isBefore(endDate.add(1, 'day'));
+              });
+              
+              // Categorize chemicals
+              const chemicalCategories = {
+                wsr: ['WSR', 'WET STRENGTH', 'KYMENE'],
+                coating: ['COATING', 'STARCH', 'PVA'],
+                process: ['DEFOAMER', 'BIOCIDE', 'DISPERSANT'],
+                other: []
+              };
+              
+              const categorizedChemicals = new Map<string, Map<string, { quantity: number; cost: number }>>();
+              filteredData.forEach(day => {
+                if (day.chemicalConsumption) {
+                  Object.entries(day.chemicalConsumption).forEach(([chemical, data]: [string, any]) => {
+                    let category = 'other';
+                    for (const [cat, keywords] of Object.entries(chemicalCategories)) {
+                      if (keywords.some(keyword => chemical.toUpperCase().includes(keyword))) {
+                        category = cat;
+                        break;
+                      }
+                    }
+                    
+                    if (!categorizedChemicals.has(category)) {
+                      categorizedChemicals.set(category, new Map<string, { quantity: number; cost: number }>());
+                    }
+                    
+                    const catMap = categorizedChemicals.get(category)!;
+                    const existing = catMap.get(chemical) || { quantity: 0, cost: 0 };
+                    catMap.set(chemical, {
+                      quantity: existing.quantity + (data.quantity || 0),
+                      cost: existing.cost + (data.cost || 0)
+                    });
+                  });
+                }
+              });
+              
+              const totalProduction = filteredData.reduce((sum, d) => sum + d.totalProduction, 0);
+              
+              return (
+                <Box>
+                  {/* Chemical Category Summary */}
+                  <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                    {Array.from(categorizedChemicals.entries()).map(([category, chemicals]) => {
+                      const totalCost = Array.from(chemicals.values()).reduce((sum, data) => sum + data.cost, 0);
+                      const totalQuantity = Array.from(chemicals.values()).reduce((sum, data) => sum + data.quantity, 0);
+                      
+                      return (
+                        <Card key={category} sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                          <CardContent>
+                            <Typography color="textSecondary" variant="body2" sx={{ textTransform: 'capitalize' }}>
+                              {category === 'wsr' ? 'WSR Chemicals' : category === 'coating' ? 'Coating Chemicals' : category === 'process' ? 'Process Chemicals' : 'Other Chemicals'}
+                            </Typography>
+                            <Typography variant="h6">
+                              {formatIndianCurrency(totalCost)}
+                            </Typography>
+                            <Typography variant="caption" color="textSecondary">
+                              {totalQuantity.toFixed(0)} kg ({(totalQuantity / totalProduction).toFixed(2)} kg/MT)
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </Box>
+                  
+                  {/* WSR Trend Analysis */}
+                  <Typography variant="subtitle2" gutterBottom>
+                    WSR & Coating Chemical Trends
+                  </Typography>
+                  <Box sx={{ height: 300, mb: 3 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={filteredData.slice(-15).map(day => {
+                        const wsrConsumption = Object.entries(day.chemicalConsumption || {}).reduce((sum, [chemical, data]: [string, any]) => {
+                          if (chemicalCategories.wsr.some(keyword => chemical.toUpperCase().includes(keyword))) {
+                            return sum + (data.quantity || 0) / day.totalProduction;
+                          }
+                          return sum;
+                        }, 0);
+                        
+                        const coatingConsumption = Object.entries(day.chemicalConsumption || {}).reduce((sum, [chemical, data]: [string, any]) => {
+                          if (chemicalCategories.coating.some(keyword => chemical.toUpperCase().includes(keyword))) {
+                            return sum + (data.quantity || 0) / day.totalProduction;
+                          }
+                          return sum;
+                        }, 0);
+                        
+                        return {
+                          date: dayjs(day.date).format('MMM DD'),
+                          wsr: wsrConsumption,
+                          coating: coatingConsumption,
+                          total: (day.chemicalsCost / day.totalProduction)
+                        };
+                      })}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis yAxisId="left" label={{ value: 'Consumption (kg/MT)', angle: -90, position: 'insideLeft' }} />
+                        <YAxis yAxisId="right" orientation="right" label={{ value: 'Total Chemical Cost (Rs/MT)', angle: 90, position: 'insideRight' }} />
+                        <Tooltip />
+                        <Legend />
+                        <Line yAxisId="left" type="monotone" dataKey="wsr" stroke="#9c27b0" name="WSR (kg/MT)" strokeWidth={2} />
+                        <Line yAxisId="left" type="monotone" dataKey="coating" stroke="#3f51b5" name="Coating (kg/MT)" strokeWidth={2} />
+                        <Line yAxisId="right" type="monotone" dataKey="total" stroke="#ff5722" name="Total Cost (Rs/MT)" strokeWidth={2} strokeDasharray="5 5" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </Box>
+              );
+            })()}
+          </Paper>
+        </Box>
+      )}
+
+      {/* Deckle Loss Analysis */}
+      {importedData && importedData.length > 0 && (
+        <Box sx={{ mt: 3 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Deckle Loss Analysis & Trends
+            </Typography>
+            
+            {(() => {
+              const filteredData = importedData.filter(day => {
+                if (!dateRange.start || !dateRange.end) return true;
+                const itemDate = dayjs(day.date);
+                const startDate = dayjs(dateRange.start);
+                const endDate = dayjs(dateRange.end);
+                return itemDate.isAfter(startDate.subtract(1, 'day')) && itemDate.isBefore(endDate.add(1, 'day'));
+              });
+              
+              const deckleData = filteredData.map(day => ({
+                date: dayjs(day.date).format('MMM DD'),
+                avgDeckle: day.avgDeckle || 0,
+                deckleLoss: day.deckleLoss || 0,
+                deckleLossPercentage: ((day.deckleLoss || 0) / day.totalProduction) * 100,
+                production: day.totalProduction
+              }));
+              
+              const avgDeckleLoss = deckleData.reduce((sum, d) => sum + d.deckleLoss, 0) / deckleData.length;
+              const maxDeckleLoss = Math.max(...deckleData.map(d => d.deckleLoss));
+              const minDeckleLoss = Math.min(...deckleData.map(d => d.deckleLoss));
+              const totalDeckleLoss = deckleData.reduce((sum, d) => sum + d.deckleLoss, 0);
+              const totalProduction = deckleData.reduce((sum, d) => sum + d.production, 0);
+              
+              // Calculate cost impact of deckle loss
+              const avgCostPerTon = filteredData.reduce((sum, d) => sum + (d.costPerTonMC || 0), 0) / filteredData.length;
+              const deckleLossCostImpact = (totalDeckleLoss / 1000) * avgCostPerTon; // Convert to MT and multiply by cost
+              
+              return (
+                <Box>
+                  {/* Deckle Loss Metrics */}
+                  <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Typography color="textSecondary" variant="body2">
+                          Average Deckle
+                        </Typography>
+                        <Typography variant="h5">
+                          {(deckleData.reduce((sum, d) => sum + d.avgDeckle, 0) / deckleData.length).toFixed(1)} CM
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Production width
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Typography color="textSecondary" variant="body2">
+                          Daily Deckle Loss
+                        </Typography>
+                        <Typography variant="h5" color={avgDeckleLoss > 5 ? 'error' : 'inherit'}>
+                          {avgDeckleLoss.toFixed(1)} CM
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Min: {minDeckleLoss.toFixed(1)} / Max: {maxDeckleLoss.toFixed(1)}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Typography color="textSecondary" variant="body2">
+                          Loss Percentage
+                        </Typography>
+                        <Typography variant="h5" color={(totalDeckleLoss / totalProduction * 100) > 3 ? 'error' : 'inherit'}>
+                          {((totalDeckleLoss / totalProduction) * 100).toFixed(2)}%
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Of total production
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card sx={{ flex: '1 1 200px', minWidth: 180 }}>
+                      <CardContent>
+                        <Typography color="textSecondary" variant="body2">
+                          Cost Impact
+                        </Typography>
+                        <Typography variant="h5" color="error">
+                          {formatIndianCurrency(deckleLossCostImpact)}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Loss value in period
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Box>
+                  
+                  {/* Deckle Loss Trend Chart */}
+                  <Typography variant="subtitle2" gutterBottom>
+                    Deckle Loss Trend & Impact
+                  </Typography>
+                  <Box sx={{ height: 300 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={deckleData.slice(-20)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis yAxisId="left" label={{ value: 'Deckle (CM)', angle: -90, position: 'insideLeft' }} />
+                        <YAxis yAxisId="right" orientation="right" label={{ value: 'Loss %', angle: 90, position: 'insideRight' }} />
+                        <Tooltip />
+                        <Legend />
+                        <Line yAxisId="left" type="monotone" dataKey="avgDeckle" stroke="#2196f3" name="Avg Deckle (CM)" strokeWidth={2} />
+                        <Line yAxisId="left" type="monotone" dataKey="deckleLoss" stroke="#ff5722" name="Deckle Loss (CM)" strokeWidth={2} />
+                        <Line yAxisId="right" type="monotone" dataKey="deckleLossPercentage" stroke="#ff9800" name="Loss %" strokeWidth={2} strokeDasharray="5 5" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </Box>
+              );
+            })()}
+          </Paper>
+        </Box>
+      )}
+
+      {/* Utility Cost Impact Analysis */}
+      {importedData && importedData.length > 0 && (
+        <Box sx={{ mt: 3 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Utility Cost Impact Dashboard
+            </Typography>
+            
+            {(() => {
+              const filteredData = importedData.filter(day => {
+                if (!dateRange.start || !dateRange.end) return true;
+                const itemDate = dayjs(day.date);
+                const startDate = dayjs(dateRange.start);
+                const endDate = dayjs(dateRange.end);
+                return itemDate.isAfter(startDate.subtract(1, 'day')) && itemDate.isBefore(endDate.add(1, 'day'));
+              });
+              
+              const totalProduction = filteredData.reduce((sum, d) => sum + d.totalProduction, 0);
+              
+              // Calculate utility costs and their impact
+              type UtilityMetric = {
+                totalCost: number;
+                totalConsumption: number;
+                avgCostPerUnit: number;
+                costPerTon: number;
+              };
+              
+              const utilityMetrics: Record<string, UtilityMetric> = {
+                steam: {
+                  totalCost: filteredData.reduce((sum, d) => sum + (d.steamCost || 0), 0),
+                  totalConsumption: filteredData.reduce((sum, d) => sum + (d.steamConsumption || 0), 0),
+                  avgCostPerUnit: 0,
+                  costPerTon: 0
+                },
+                power: {
+                  totalCost: filteredData.reduce((sum, d) => sum + (d.electricityCost || 0), 0),
+                  totalConsumption: filteredData.reduce((sum, d) => sum + (d.powerConsumption || 0), 0),
+                  avgCostPerUnit: 0,
+                  costPerTon: 0
+                },
+                water: {
+                  totalCost: filteredData.reduce((sum, d) => sum + (d.waterCost || 0), 0),
+                  totalConsumption: filteredData.reduce((sum, d) => sum + (d.waterConsumption || 0), 0),
+                  avgCostPerUnit: 0,
+                  costPerTon: 0
+                },
+                gas: {
+                  totalCost: filteredData.reduce((sum, d) => sum + ((d.steamCost || 0) * 0.4), 0), // Gas is 40% of steam cost
+                  totalConsumption: filteredData.reduce((sum, d) => sum + (d.gasConsumption || 0), 0),
+                  avgCostPerUnit: 0,
+                  costPerTon: 0
+                }
+              };
+              
+              // Calculate per-unit costs
+              Object.keys(utilityMetrics).forEach(utility => {
+                const metric = utilityMetrics[utility];
+                metric.avgCostPerUnit = metric.totalConsumption > 0 ? metric.totalCost / metric.totalConsumption : 0;
+                metric.costPerTon = metric.totalCost / totalProduction;
+              });
+              
+              const totalUtilityCost = Object.values(utilityMetrics).reduce((sum, metric) => sum + metric.totalCost, 0);
+              const utilityData = Object.entries(utilityMetrics).map(([name, metric]) => ({
+                name: name.charAt(0).toUpperCase() + name.slice(1),
+                cost: metric.totalCost,
+                percentage: (metric.totalCost / totalUtilityCost) * 100,
+                costPerTon: metric.costPerTon
+              }));
+              
+              // Calculate efficiency improvements potential
+              const benchmarks: Record<string, number> = {
+                steam: 3.5, // MT steam per MT production
+                power: 650, // kWh per MT production
+                water: 35, // m³ per MT production
+                gas: 85 // SCM per MT production
+              };
+              
+              const efficiencyPotential = Object.entries(utilityMetrics).map(([utility, metric]) => {
+                const actualConsumption = metric.totalConsumption / totalProduction;
+                const benchmark = benchmarks[utility] || 0;
+                const potential = Math.max(0, (actualConsumption - benchmark) * metric.avgCostPerUnit * totalProduction);
+                return {
+                  utility: utility.charAt(0).toUpperCase() + utility.slice(1),
+                  actual: actualConsumption,
+                  benchmark,
+                  potentialSaving: potential,
+                  percentageImprovement: benchmark > 0 ? ((actualConsumption - benchmark) / actualConsumption) * 100 : 0
+                };
+              });
+              
+              return (
+                <Box>
+                  {/* Utility Cost Distribution */}
+                  <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 3 }}>
+                    <Box sx={{ flex: '1 1 400px', minWidth: 300 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Utility Cost Distribution
+                      </Typography>
+                      <Box sx={{ height: 300 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={utilityData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={100}
+                              fill="#8884d8"
+                              dataKey="percentage"
+                              label={({ name, percentage }) => `${name}: ${percentage.toFixed(1)}%`}
+                            >
+                              {utilityData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={['#ff5722', '#4caf50', '#2196f3', '#ff9800'][index]} />
+                              ))}
+                            </Pie>
+                            <Tooltip />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Box>
+                    
+                    {/* Efficiency Improvement Potential */}
+                    <Box sx={{ flex: '1 1 400px', minWidth: 350 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Efficiency Improvement Potential
+                      </Typography>
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Utility</TableCell>
+                              <TableCell align="right">Actual</TableCell>
+                              <TableCell align="right">Benchmark</TableCell>
+                              <TableCell align="right">Potential Saving</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {efficiencyPotential.map((row) => (
+                              <TableRow key={row.utility}>
+                                <TableCell>{row.utility}</TableCell>
+                                <TableCell align="right">{row.actual.toFixed(2)}</TableCell>
+                                <TableCell align="right">{row.benchmark}</TableCell>
+                                <TableCell align="right" sx={{ color: row.potentialSaving > 0 ? 'success.main' : 'inherit' }}>
+                                  {formatIndianCurrency(row.potentialSaving)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            <TableRow>
+                              <TableCell colSpan={3}><strong>Total Potential Saving</strong></TableCell>
+                              <TableCell align="right"><strong>{formatIndianCurrency(efficiencyPotential.reduce((sum, e) => sum + e.potentialSaving, 0))}</strong></TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Box>
+                  </Box>
+                  
+                  {/* Cost per Ton by Utility */}
+                  <Typography variant="subtitle2" gutterBottom sx={{ mt: 3 }}>
+                    Utility Cost per MT Breakdown
+                  </Typography>
+                  <Box sx={{ height: 300 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={utilityData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis label={{ value: 'Cost per MT (Rs)', angle: -90, position: 'insideLeft' }} />
+                        <Tooltip formatter={(value: any) => formatIndianCurrency(value)} />
+                        <Bar dataKey="costPerTon" fill="#8884d8">
+                          {utilityData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={['#ff5722', '#4caf50', '#2196f3', '#ff9800'][index]} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </Box>
+              );
+            })()}
+          </Paper>
+        </Box>
+      )}
     </Box>
   );
 };
