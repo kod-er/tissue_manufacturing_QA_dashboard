@@ -1623,7 +1623,30 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
                       return null;
                     }}
                   />
-                  <Legend />
+                  <Legend 
+                    content={({ payload }) => {
+                      if (payload && payload.length) {
+                        return (
+                          <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 2, mt: 2 }}>
+                            {costBreakdown.map((entry, index) => (
+                              <Box key={entry.category} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Box
+                                  sx={{
+                                    width: 12,
+                                    height: 12,
+                                    backgroundColor: COLORS[index % COLORS.length],
+                                    borderRadius: '2px'
+                                  }}
+                                />
+                                <Typography variant="caption">{entry.category}</Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </Box>
