@@ -1597,7 +1597,7 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
                     outerRadius={120}
                     fill="#8884d8"
                     dataKey="percentage"
-                    label={(entry) => `${entry.category}: ${entry.percentage.toFixed(1)}%`}
+                    label={({ category, percentage }) => `${category}: ${percentage.toFixed(1)}%`}
                     labelLine={false}
                   >
                     {costBreakdown.map((entry, index) => (
@@ -2532,7 +2532,7 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        label={(entry) => `${entry.name}: ${entry.percentage.toFixed(1)}%`}
+                        label={({ name, percentage }) => `${name}: ${percentage.toFixed(1)}%`}
                         outerRadius={100}
                         fill="#8884d8"
                         dataKey="value"
