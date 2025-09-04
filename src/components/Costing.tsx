@@ -1597,7 +1597,30 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
                     outerRadius={120}
                     fill="#8884d8"
                     dataKey="percentage"
-                    label={({ category, percentage }) => `${category}: ${percentage.toFixed(1)}%`}
+                    label={({ category, percentage, cx, cy, midAngle, innerRadius, outerRadius, index }) => {
+                      // Only show labels for slices > 5%
+                      if (percentage > 5 && midAngle !== undefined && cx !== undefined && cy !== undefined && innerRadius !== undefined && outerRadius !== undefined) {
+                        const RADIAN = Math.PI / 180;
+                        const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                        const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                        const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                        
+                        return (
+                          <text 
+                            x={x} 
+                            y={y} 
+                            fill="white" 
+                            textAnchor={x > cx ? 'start' : 'end'} 
+                            dominantBaseline="central"
+                            fontSize="12"
+                            fontWeight="bold"
+                          >
+                            {`${percentage.toFixed(1)}%`}
+                          </text>
+                        );
+                      }
+                      return null;
+                    }}
                     labelLine={false}
                   >
                     {costBreakdown.map((entry, index) => (
