@@ -33,7 +33,8 @@ import {
   Science as ScienceIcon,
   Build as BuildIcon,
   CalendarToday as CalendarIcon,
-  DateRange as DateRangeIcon
+  DateRange as DateRangeIcon,
+  Download as DownloadIcon
 } from '@mui/icons-material';
 import {
   BarChart,
@@ -55,6 +56,8 @@ import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import isoWeek from 'dayjs/plugin/isoWeek';
 import { CostingData as ImportedCostingData, ProductionLoss } from '../utils/parseCostingData';
+import { generateCostAnalysisExcel } from '../utils/costAnalysisExporter';
+import { generateCostAnalysisPdfReportClean } from '../utils/costAnalysisPdfReportClean';
 import CostingUpload from './CostingUpload';
 
 dayjs.extend(isSameOrAfter);
@@ -734,6 +737,128 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
     setImportedData(data);
   };
 
+  const handleExportCostAnalysisExcel = () => {
+    try {
+      let dataToExport: ImportedCostingData[];
+      
+      if (importedData && importedData.length > 0) {
+        // Use imported data directly
+        dataToExport = importedData;
+      } else if (filteredData.length > 0) {
+        // Convert ProductionCost[] to ImportedCostingData[]
+        dataToExport = filteredData.map(item => ({
+          date: item.date,
+          totalProduction: item.production / 1000, // Convert kg to MT
+          totalCost: item.totalCost,
+          costPerKg: item.costPerKg,
+          costPerTonMC: item.costPerTonMC,
+          costPerTonFinish: item.costPerTonFinish,
+          fiberCost: item.fiber,
+          chemicalsCost: item.chemicals,
+          steamCost: item.steam,
+          electricityCost: item.electricity,
+          laborCost: item.labor,
+          waterCost: item.water,
+          maintenanceCost: item.maintenance,
+          overheadCost: item.overhead,
+          wasteCost: item.waste,
+          quality: item.quality,
+          gsmGrade: item.gsmGrade,
+          rawMaterials: [],
+          chemicals: [],
+          productionLosses: [],
+          totalTimeLoss: 0,
+          productionEfficiency: 95 // Default efficiency for dummy data
+        }));
+      } else {
+        alert('No data available to export');
+        return;
+      }
+
+      // Determine the period for the export
+      const startDate = dayjs(dateRange.start || dataToExport[0].date);
+      const endDate = dayjs(dateRange.end || dataToExport[dataToExport.length - 1].date);
+      const monthYear = startDate.format('MMMM YYYY');
+      
+      // Generate the Excel file
+      const excelBlob = generateCostAnalysisExcel(dataToExport, monthYear);
+      
+      // Create download link and trigger download
+      const url = window.URL.createObjectURL(excelBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Cost_Analysis_${startDate.format('YYYY-MM')}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting cost analysis:', error);
+      alert('Failed to export cost analysis. Please try again.');
+    }
+  };
+
+  const handleExportCostAnalysisPdf = async () => {
+    try {
+      let dataToExport: ImportedCostingData[];
+      
+      if (importedData && importedData.length > 0) {
+        // Use imported data directly
+        dataToExport = importedData;
+      } else if (filteredData.length > 0) {
+        // Convert ProductionCost[] to ImportedCostingData[]
+        dataToExport = filteredData.map(item => ({
+          date: item.date,
+          totalProduction: item.production / 1000, // Convert kg to MT
+          totalCost: item.totalCost,
+          costPerKg: item.costPerKg,
+          costPerTonMC: item.costPerTonMC,
+          costPerTonFinish: item.costPerTonFinish,
+          fiberCost: item.fiber,
+          chemicalsCost: item.chemicals,
+          steamCost: item.steam,
+          electricityCost: item.electricity,
+          laborCost: item.labor,
+          waterCost: item.water,
+          maintenanceCost: item.maintenance,
+          overheadCost: item.overhead,
+          wasteCost: item.waste,
+          quality: item.quality,
+          gsmGrade: item.gsmGrade,
+          rawMaterials: [],
+          chemicals: [],
+          productionLosses: [],
+          totalTimeLoss: 0,
+          productionEfficiency: 95 // Default efficiency for dummy data
+        }));
+      } else {
+        alert('No data available to export');
+        return;
+      }
+
+      // Determine the period for the export
+      const startDate = dayjs(dateRange.start || dataToExport[0].date);
+      const endDate = dayjs(dateRange.end || dataToExport[dataToExport.length - 1].date);
+      const monthYear = startDate.format('MMMM YYYY');
+      
+      // Generate the PDF file
+      const pdfBlob = await generateCostAnalysisPdfReportClean(dataToExport, monthYear);
+      
+      // Create download link and trigger download
+      const url = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Cost_Analysis_Report_${startDate.format('YYYY-MM')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting cost analysis PDF:', error);
+      alert('Failed to export cost analysis report. Please try again.');
+    }
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
@@ -753,6 +878,28 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
             variant="outlined"
             size="small"
           />
+        )}
+        <Box sx={{ flexGrow: 1 }} />
+        {(importedData || filteredData.length > 0) && (
+          <>
+            <Button
+              variant="contained"
+              startIcon={<DownloadIcon />}
+              size="small"
+              onClick={handleExportCostAnalysisPdf}
+              sx={{ mr: 1 }}
+            >
+              Export PDF Report
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<DownloadIcon />}
+              size="small"
+              onClick={handleExportCostAnalysisExcel}
+            >
+              Export Excel
+            </Button>
+          </>
         )}
       </Box>
 
