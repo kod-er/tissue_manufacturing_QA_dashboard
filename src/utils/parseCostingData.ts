@@ -127,7 +127,7 @@ export async function parseCostingExcel(file: File): Promise<CostingData[]> {
         });
         
         // Parse consumption data
-        const { consumptionMap, perTonCostMap } = parseConsumptionSheet(workbook);
+        const { consumptionMap, perTonCostMap, timeLossMap } = parseConsumptionSheet(workbook);
         
         // Parse chemical consumption
         const chemicalData = parseChemicalSheet(workbook);
@@ -136,7 +136,23 @@ export async function parseCostingExcel(file: File): Promise<CostingData[]> {
         const utilityData = parseUtilityData(workbook);
         
         // Combine all data to create costing records
-        const costingData = combineCostingData(productionData, consumptionMap, chemicalData, utilityData, productionLosses, perTonCostMap);
+        const costingData = combineCostingData(productionData, consumptionMap, chemicalData, utilityData, productionLosses, perTonCostMap, timeLossMap);
+        
+        // Log date range of parsed data
+        if (costingData.length > 0) {
+          const sortedCostingData = costingData.sort((a, b) => a.date.localeCompare(b.date));
+          console.log('=== Parsed Costing Data Date Range ===');
+          console.log(`First date: ${sortedCostingData[0].date}`);
+          console.log(`Last date: ${sortedCostingData[sortedCostingData.length - 1].date}`);
+          console.log(`Total days: ${sortedCostingData.length}`);
+          
+          // Check specifically for data after Aug 31, 2025
+          const dataAfterAug31 = sortedCostingData.filter(d => d.date > '2025-08-31');
+          console.log(`Days after Aug 31, 2025: ${dataAfterAug31.length}`);
+          if (dataAfterAug31.length > 0) {
+            console.log('Dates after Aug 31, 2025:', dataAfterAug31.map(d => d.date));
+          }
+        }
         
         resolve(costingData);
       } catch (error) {
@@ -183,6 +199,11 @@ function parseProductionSheet(workbook: XLSX.WorkBook): { production: Production
       
       const date = formatDate(row[0]);
       
+      // Log dates after Aug 31, 2025
+      if (date > '2025-08-31') {
+        console.log(`Production sheet - Found date after Aug 31: ${date}, row[0]: ${row[0]}`);
+      }
+      
       // Parse production data
       if (row[2] && row[3] && row[6]) {
         productionData.push({
@@ -195,21 +216,26 @@ function parseProductionSheet(workbook: XLSX.WorkBook): { production: Production
       }
       
       // Parse production losses
-      // In the Production summary sheet, losses might be aggregated differently
-      // Check columns 8, 9, 10 for department, time loss, and remarks
+      // In the Production sheet, the columns are:
+      // Column 8: Production Loss Details / Dept.
+      // Column 9: Time loss (H:MM format)
+      // Column 10: Hrs. (if time is split)
+      // Column 11: Min. (if time is split) / Remarks
+      // Column 12: Remarks (if columns 10/11 have time)
       if (row[8] && row[8].toString().trim() !== '' && 
           row[8].toString().trim() !== 'Day total' &&
-          !row[8].toString().includes('M/c Production')) {
+          row[8].toString().trim() !== 'Dept.' &&
+          !row[8].toString().includes('M/c Production') &&
+          !row[8].toString().includes('Production Loss Details')) {
         
         const department = row[8].toString().trim();
-        let remarks = row[10] ? row[10].toString() : '';
+        let timeLoss = 0;
+        let remarks = '';
         
-        // Time loss might be in column 9
+        // First check column 9 for time in H:MM format
         if (row[9] !== undefined && row[9] !== null && row[9] !== '') {
-          let timeLoss = 0;
           const timeLossRaw = row[9];
           
-          // Handle different time formats
           if (typeof timeLossRaw === 'number') {
             // Excel might store time as fraction of a day
             if (timeLossRaw < 1) {
@@ -234,21 +260,52 @@ function parseProductionSheet(workbook: XLSX.WorkBook): { production: Production
             }
           }
           
-          // Debug logging
-          console.log(`Production sheet - Date: ${date}, Dept: ${department}, TimeLossRaw: ${timeLossRaw}, TimeLossParsed: ${timeLoss} hours`);
-          
-          if (timeLoss > 0) {
-            if (!lossesMap.has(date)) {
-              lossesMap.set(date, []);
+          // Remarks might be in column 10 or 11 depending on format
+          if (row[10]) {
+            // Check if column 10 is a number (hours) or text (remarks)
+            const col10Str = row[10].toString().trim();
+            if (col10Str && !col10Str.match(/^\d+\.?\d*$/)) {
+              remarks = col10Str;
             }
-            
-            lossesMap.get(date)!.push({
-              date,
-              department,
-              timeLoss,
-              remarks
-            });
           }
+          if (!remarks && row[11]) {
+            remarks = row[11].toString();
+          }
+          if (!remarks && row[12]) {
+            remarks = row[12].toString();
+          }
+        }
+        
+        // If time loss is 0, check if it's in separate Hrs/Min columns (10 and 11)
+        if (timeLoss === 0 && row[10] !== undefined && row[10] !== null) {
+          const col10Str = row[10].toString().trim();
+          if (col10Str.match(/^\d+\.?\d*$/)) {
+            const hrs = parseFloat(col10Str) || 0;
+            const mins = row[11] ? (parseFloat(row[11].toString()) || 0) : 0;
+            if (hrs > 0 || mins > 0) {
+              timeLoss = hrs + mins / 60;
+              // Remarks would be in column 12
+              if (row[12]) {
+                remarks = row[12].toString();
+              }
+            }
+          }
+        }
+        
+        // Debug logging
+        if (timeLoss > 0) {
+          console.log(`Production sheet - Date: ${date}, Dept: ${department}, TimeLoss: ${timeLoss.toFixed(2)} hours, Remarks: ${remarks}`);
+          
+          if (!lossesMap.has(date)) {
+            lossesMap.set(date, []);
+          }
+          
+          lossesMap.get(date)!.push({
+            date,
+            department,
+            timeLoss,
+            remarks
+          });
         }
       }
     }
@@ -272,6 +329,11 @@ function parseDailySheets(workbook: XLSX.WorkBook): Map<string, ProductionLoss[]
       // Parse date from sheet name
       const [day, month, year] = sheetName.split('-');
       const date = `${year}-${month}-${day}`;
+      
+      // Log if date is after August 31, 2025
+      if (date > '2025-08-31') {
+        console.log(`Processing sheet after Aug 31, 2025: ${sheetName} -> ${date}`);
+      }
       
       // Look for production loss data in daily sheets
       // In daily sheets, the structure is different:
@@ -366,21 +428,24 @@ function parseDailySheets(workbook: XLSX.WorkBook): Map<string, ProductionLoss[]
 interface ConsumptionSheetData {
   consumptionMap: Map<string, RawMaterialConsumption[]>;
   perTonCostMap: Map<string, { mcProduction?: number; finishProduction?: number }>;
+  timeLossMap: Map<string, number>; // Time loss in MT (from APPROX BACK LOG column)
 }
 
 function parseConsumptionSheet(workbook: XLSX.WorkBook): ConsumptionSheetData {
   const sheet = workbook.Sheets['Consumption'];
-  if (!sheet) return { consumptionMap: new Map(), perTonCostMap: new Map() };
+  if (!sheet) return { consumptionMap: new Map(), perTonCostMap: new Map(), timeLossMap: new Map() };
   
   const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
   const consumptionMap = new Map<string, RawMaterialConsumption[]>();
   const perTonCostMap = new Map<string, { mcProduction?: number; finishProduction?: number }>();
+  const timeLossMap = new Map<string, number>();
   
-  // Find column indices for per ton cost columns
+  // Find column indices for per ton cost columns and time loss column
   // Based on the Excel analysis, they are at columns 85 and 86 (0-indexed: 84 and 85)
   // But let's still search to be safe
   let perTonMCCol = -1;
   let perTonFinishCol = -1;
+  let timeLossCol = -1;
   
   // Check row 3 (index 2) for column headers - this is where the headers are
   if (jsonData[2]) {
@@ -393,6 +458,10 @@ function parseConsumptionSheet(workbook: XLSX.WorkBook): ConsumptionSheetData {
       if (header.toLowerCase().includes('per ton cost') && header.toLowerCase().includes('finish production')) {
         perTonFinishCol = col;
         console.log(`Found Finish Production column at: ${col}, header: ${header}`);
+      }
+      if (header.toLowerCase().includes('approx back log') || header.toLowerCase().includes('wip')) {
+        timeLossCol = col;
+        console.log(`Found Time Loss column at: ${col}, header: ${header}`);
       }
     }
   }
@@ -473,12 +542,21 @@ function parseConsumptionSheet(workbook: XLSX.WorkBook): ConsumptionSheetData {
       }
     }
     
+    // Parse time loss data if column found
+    if (timeLossCol >= 0 && jsonData[row][timeLossCol]) {
+      const timeLossValue = parseFloat(jsonData[row][timeLossCol]) || 0;
+      if (timeLossValue > 0) {
+        timeLossMap.set(date, timeLossValue);
+        console.log(`Consumption sheet - Time Loss for ${date}: ${timeLossValue} MT`);
+      }
+    }
+    
     if (dayConsumption.length > 0) {
       consumptionMap.set(date, dayConsumption);
     }
   }
   
-  return { consumptionMap, perTonCostMap };
+  return { consumptionMap, perTonCostMap, timeLossMap };
 }
 
 function parseChemicalSheet(workbook: XLSX.WorkBook): Map<string, ChemicalConsumption[]> {
@@ -596,7 +674,8 @@ function combineCostingData(
   chemicalData: Map<string, ChemicalConsumption[]>,
   utilityData: Map<string, UtilityConsumption>,
   productionLosses: Map<string, ProductionLoss[]>,
-  perTonCostMap: Map<string, { mcProduction?: number; finishProduction?: number }>
+  perTonCostMap: Map<string, { mcProduction?: number; finishProduction?: number }>,
+  timeLossMap: Map<string, number>
 ): CostingData[] {
   const costingData: CostingData[] = [];
   
@@ -673,7 +752,21 @@ function combineCostingData(
     
     // Get production losses for the date
     const dayLosses = productionLosses.get(date) || [];
-    const totalTimeLoss = dayLosses.reduce((sum, loss) => sum + loss.timeLoss, 0);
+    let totalTimeLoss = dayLosses.reduce((sum, loss) => sum + loss.timeLoss, 0);
+    
+    // Use time loss from consumption sheet if available (this is in MT, not hours)
+    const consumptionTimeLoss = timeLossMap.get(date);
+    if (consumptionTimeLoss !== undefined && consumptionTimeLoss > 0 && totalTimeLoss === 0) {
+      // Only use consumption sheet time loss if we don't have time loss from production sheet
+      // Convert MT loss to approximate hours (assuming average production rate)
+      // If we have 100 MT/day production capacity, and we have X MT loss
+      // Then hours lost = (X / 100) * 24
+      const avgDailyProduction = totalProduction > 0 ? totalProduction : 80; // Default 80 MT/day
+      const hoursFromMTLoss = (consumptionTimeLoss / avgDailyProduction) * 24;
+      totalTimeLoss = hoursFromMTLoss;
+      
+      console.log(`Date ${date}: Using time loss from consumption sheet: ${consumptionTimeLoss} MT -> ${hoursFromMTLoss.toFixed(2)} hours`);
+    }
     
     // Calculate production efficiency
     // Assume 24 hours operation per day minus downtime
@@ -758,21 +851,38 @@ function combineCostingData(
 function formatDate(dateValue: any): string {
   if (!dateValue) return '';
   
+  let formattedDate = '';
+  
   // Handle Excel date serial number
   if (typeof dateValue === 'number') {
     const excelDate = new Date((dateValue - 25569) * 86400 * 1000);
-    return dayjs(excelDate).format('YYYY-MM-DD');
+    formattedDate = dayjs(excelDate).format('YYYY-MM-DD');
+    
+    // Log dates after Aug 31, 2025
+    if (formattedDate > '2025-08-31') {
+      console.log(`formatDate: Excel serial ${dateValue} -> ${formattedDate}`);
+    }
   }
   
   // Handle date string
-  if (typeof dateValue === 'string') {
-    return dayjs(dateValue).format('YYYY-MM-DD');
+  else if (typeof dateValue === 'string') {
+    formattedDate = dayjs(dateValue).format('YYYY-MM-DD');
+    
+    // Log dates after Aug 31, 2025
+    if (formattedDate > '2025-08-31') {
+      console.log(`formatDate: String "${dateValue}" -> ${formattedDate}`);
+    }
   }
   
   // Handle Date object
-  if (dateValue instanceof Date) {
-    return dayjs(dateValue).format('YYYY-MM-DD');
+  else if (dateValue instanceof Date) {
+    formattedDate = dayjs(dateValue).format('YYYY-MM-DD');
+    
+    // Log dates after Aug 31, 2025
+    if (formattedDate > '2025-08-31') {
+      console.log(`formatDate: Date object ${dateValue} -> ${formattedDate}`);
+    }
   }
   
-  return '';
+  return formattedDate;
 }
