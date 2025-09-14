@@ -226,9 +226,34 @@ function parseProductionSheet(workbook: XLSX.WorkBook): { production: Production
           row[8].toString().trim() !== 'Day total' &&
           row[8].toString().trim() !== 'Dept.' &&
           !row[8].toString().includes('M/c Production') &&
-          !row[8].toString().includes('Production Loss Details')) {
+          !row[8].toString().includes('Production Loss Details') &&
+          !row[8].toString().includes('Day Total Hrs') &&
+          !row[8].toString().match(/^\d+\.?\d*$/)) { // Skip pure numbers
         
-        const department = row[8].toString().trim();
+        const departmentRaw = row[8].toString().trim();
+        
+        // Skip if it's a number or time value
+        if (departmentRaw.match(/^\d+:?\d*$/) || departmentRaw.match(/^\d+\.\d+$/)) {
+          continue;
+        }
+        
+        // Clean up department name
+        let department = departmentRaw;
+        
+        // Common department mappings
+        const deptMappings: { [key: string]: string } = {
+          'Instt': 'Instruments',
+          'Maintt': 'Maintenance',
+          'Maintainance': 'Maintenance',
+          'System wash up': 'System Wash',
+          'Sheet break': 'Sheet Break',
+          'Grade change': 'Grade Change'
+        };
+        
+        // Apply mapping if exists
+        if (deptMappings[department]) {
+          department = deptMappings[department];
+        }
         let timeLoss = 0;
         let remarks = '';
         

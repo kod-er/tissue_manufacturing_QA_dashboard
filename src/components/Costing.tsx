@@ -1593,34 +1593,11 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
                   <Pie
                     data={costBreakdown}
                     cx="50%"
-                    cy="50%"
-                    outerRadius={120}
+                    cy="45%"
+                    outerRadius={100}
                     fill="#8884d8"
                     dataKey="percentage"
-                    label={({ category, percentage, cx, cy, midAngle, innerRadius, outerRadius, index }) => {
-                      // Only show labels for slices > 5%
-                      if (percentage > 5 && midAngle !== undefined && cx !== undefined && cy !== undefined && innerRadius !== undefined && outerRadius !== undefined) {
-                        const RADIAN = Math.PI / 180;
-                        const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-                        const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                        const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                        
-                        return (
-                          <text 
-                            x={x} 
-                            y={y} 
-                            fill="white" 
-                            textAnchor={x > cx ? 'start' : 'end'} 
-                            dominantBaseline="central"
-                            fontSize="12"
-                            fontWeight="bold"
-                          >
-                            {`${percentage.toFixed(1)}%`}
-                          </text>
-                        );
-                      }
-                      return null;
-                    }}
+                    label={false}
                     labelLine={false}
                   >
                     {costBreakdown.map((entry, index) => (
@@ -1661,7 +1638,7 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
                                     borderRadius: '2px'
                                   }}
                                 />
-                                <Typography variant="caption">{entry.category}</Typography>
+                                <Typography variant="caption">{entry.category}: {entry.percentage.toFixed(1)}%</Typography>
                               </Box>
                             ))}
                           </Box>
@@ -1822,6 +1799,17 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
               
               // Convert to array and sort by total hours
               const lossArray = Array.from(lossByDepartment.entries())
+                .filter(([dept, data]) => {
+                  // Filter out invalid department names (numbers, times, etc.)
+                  if (!dept || dept.match(/^\d+\.?\d*$/) || dept.match(/^\d+:?\d*$/)) {
+                    return false;
+                  }
+                  // Filter out entries that look like production values
+                  if (dept.match(/^\d{2,}$/) || parseFloat(dept) > 50) {
+                    return false;
+                  }
+                  return true;
+                })
                 .map(([dept, data]) => ({
                   department: dept,
                   totalHours: data.totalHours,
@@ -1940,8 +1928,8 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
                               cx="50%"
                               cy="50%"
                               labelLine={false}
-                              label={({ department, percentage }) => `${department}: ${percentage.toFixed(1)}%`}
-                              outerRadius={100}
+                              label={false}
+                              outerRadius={80}
                               fill="#8884d8"
                               dataKey="totalHours"
                             >
@@ -1949,9 +1937,34 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                               ))}
                             </Pie>
-                            <Tooltip formatter={(value: any) => `${value.toFixed(1)} hrs`} />
+                            <Tooltip 
+                              formatter={(value: any) => `${value.toFixed(1)} hrs`}
+                              contentStyle={{ 
+                                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                                border: '1px solid #ccc',
+                                borderRadius: '4px'
+                              }}
+                            />
                           </PieChart>
                         </ResponsiveContainer>
+                      </Box>
+                      {/* Custom Legend Below Chart */}
+                      <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
+                        {lossArray.slice(0, 6).map((entry, index) => (
+                          <Box key={entry.department} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Box
+                              sx={{
+                                width: 10,
+                                height: 10,
+                                backgroundColor: COLORS[index % COLORS.length],
+                                borderRadius: '50%'
+                              }}
+                            />
+                            <Typography variant="caption" sx={{ fontSize: '11px' }}>
+                              {entry.department}: {entry.percentage.toFixed(1)}%
+                            </Typography>
+                          </Box>
+                        ))}
                       </Box>
                     </Box>
                   </Box>
