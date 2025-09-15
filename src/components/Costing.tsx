@@ -201,7 +201,7 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
         costPerKg: item.costPerKg,
         costPerTonMC: item.costPerTonMC,
         costPerTonFinish: item.costPerTonFinish,
-        fiber: item.fiberCost,
+        fiber: item.fiberCost || 0,
         chemicals: item.chemicalsCost,
         steam: item.steamCost,
         electricity: item.electricityCost,
@@ -439,7 +439,7 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
   }, [filteredData, timeRange]);
 
   // Calculate cost breakdown with Variable/Fixed categorization
-  const costBreakdown: CostBreakdown[] = useMemo(() => {
+  const { costBreakdown, softwoodCost, hardwoodCost, totals } = useMemo(() => {
     const totals = filteredData.reduce((acc, item) => ({
       fiber: acc.fiber + item.fiber,
       chemicals: acc.chemicals + item.chemicals,
@@ -469,15 +469,82 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
       });
     }
 
-    const breakdown = [
-      {
+    // Calculate fiber breakdown if material metrics available
+    let softwoodCost = 0;
+    let hardwoodCost = 0;
+    let otherFiberCost = 0;
+    
+    if (materialMetrics && materialMetrics.categoryCosts.softwoodPulp > 0) {
+      softwoodCost = materialMetrics.categoryCosts.softwoodPulp;
+      hardwoodCost = materialMetrics.categoryCosts.hardwoodPulp;
+      otherFiberCost = totals.fiber - softwoodCost - hardwoodCost;
+    } else if (importedData && importedData.length > 0) {
+      // Fallback: calculate from filtered imported data
+      const filteredImportedData = importedData.filter(day => {
+        if (!dateRange.start || !dateRange.end) return true;
+        const itemDate = dayjs(day.date);
+        const startDate = dayjs(dateRange.start);
+        const endDate = dayjs(dateRange.end);
+        return itemDate.isAfter(startDate.subtract(1, 'day')) && itemDate.isBefore(endDate.add(1, 'day'));
+      });
+      
+      filteredImportedData.forEach(day => {
+        if (day.rawMaterials) {
+          day.rawMaterials.forEach(material => {
+            const materialLower = material.material.toLowerCase();
+            if (materialLower.includes('sodra') || materialLower.includes('stora') || 
+                materialLower.includes('metsa') || materialLower.includes('mercer') ||
+                materialLower.includes('laja') || materialLower.includes('pacifico') ||
+                materialLower.includes('komi') || materialLower.includes('sw') ||
+                materialLower.includes('softwood')) {
+              softwoodCost += material.amount;
+            } else if (materialLower.includes('acacia') || materialLower.includes('cmpc') ||
+                       materialLower.includes('baycel') || materialLower.includes('suzano') ||
+                       materialLower.includes('hw') || materialLower.includes('hardwood')) {
+              hardwoodCost += material.amount;
+            } else {
+              otherFiberCost += material.amount;
+            }
+          });
+        }
+      });
+    }
+    
+    // Build breakdown array - only include fiber categories if we have specific breakdown
+    const breakdown = [];
+    
+    // Only add softwood/hardwood if we have actual breakdown data
+    if (softwoodCost > 0 || hardwoodCost > 0) {
+      breakdown.push({
+        category: 'Softwood Pulp',
+        amount: softwoodCost,
+        percentage: (softwoodCost / totals.total) * 100,
+        trend: 'up' as const,
+        variance: 5.2,
+        costType: 'Variable' as const
+      });
+      breakdown.push({
+        category: 'Hardwood Pulp',
+        amount: hardwoodCost,
+        percentage: (hardwoodCost / totals.total) * 100,
+        trend: 'up' as const,
+        variance: 3.8,
+        costType: 'Variable' as const
+      });
+    } else if (totals.fiber > 0) {
+      // If we have fiber cost but no breakdown, show as single "Fiber" category
+      breakdown.push({
         category: 'Fiber',
         amount: totals.fiber,
         percentage: (totals.fiber / totals.total) * 100,
         trend: 'up' as const,
         variance: 4.5,
         costType: 'Variable' as const
-      },
+      });
+    }
+    
+    // Add other cost categories
+    breakdown.push(
       {
         category: 'Chemicals',
         amount: totals.chemicals,
@@ -550,11 +617,18 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
         variance: 0.2,
         costType: 'Fixed' as const
       }
-    ];
+    );
 
-    // Sort by percentage descending
-    return breakdown.sort((a, b) => b.percentage - a.percentage);
-  }, [filteredData, importedData]);
+    // Filter out zero amounts and sort by percentage descending
+    const sortedBreakdown = breakdown.filter(item => item.amount > 0).sort((a, b) => b.percentage - a.percentage);
+    
+    return {
+      costBreakdown: sortedBreakdown,
+      softwoodCost,
+      hardwoodCost,
+      totals
+    };
+  }, [filteredData, importedData, materialMetrics, dateRange]);
 
   // Calculate KPIs
   const kpis = useMemo(() => {
@@ -720,15 +794,19 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
 
   const getIcon = (category: string) => {
     switch (true) {
+      case category.includes('Softwood'): return <FactoryIcon style={{ color: '#2196f3' }} />;
+      case category.includes('Hardwood'): return <FactoryIcon style={{ color: '#4caf50' }} />;
       case category.includes('Fiber'): return <FactoryIcon />;
       case category.includes('Chemical'): return <ScienceIcon />;
       case category.includes('Steam'): return <WaterDropIcon />;
+      case category.includes('Power'): return <BoltIcon />;
       case category.includes('Electricity'): return <BoltIcon />;
       case category.includes('Labor'): return <PeopleIcon />;
       case category.includes('Water'): return <WaterDropIcon />;
       case category.includes('Maintenance'): return <BuildIcon />;
       case category.includes('Overhead'): return <CurrencyRupeeIcon />;
       case category.includes('Waste'): return <WaterDropIcon />;
+      case category.includes('Packaging'): return <FactoryIcon />;
       default: return <CurrencyRupeeIcon />;
     }
   };
@@ -1675,6 +1753,84 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
           </Paper>
         </Box>
       </Box>
+
+      {/* Fiber Cost Breakdown Summary */}
+      {materialMetrics && (softwoodCost > 0 || hardwoodCost > 0) && (
+        <Box sx={{ mt: 3 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Fiber Cost Breakdown
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+              <Box sx={{ flex: '1 1 300px', minWidth: 280 }}>
+                <Card>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <FactoryIcon style={{ color: '#2196f3' }} />
+                      <Typography variant="subtitle2" color="primary">
+                        Softwood Pulp (Long Fiber)
+                      </Typography>
+                    </Box>
+                    <Typography variant="h5">
+                      {formatIndianCurrency(softwoodCost)}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      {((softwoodCost / totals.total) * 100).toFixed(1)}% of total cost
+                    </Typography>
+                    <Typography variant="caption" color="textSecondary">
+                      {((softwoodCost / (softwoodCost + hardwoodCost)) * 100).toFixed(1)}% of fiber cost
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Box>
+              <Box sx={{ flex: '1 1 300px', minWidth: 280 }}>
+                <Card>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <FactoryIcon style={{ color: '#4caf50' }} />
+                      <Typography variant="subtitle2" color="success.main">
+                        Hardwood Pulp (Short Fiber)
+                      </Typography>
+                    </Box>
+                    <Typography variant="h5">
+                      {formatIndianCurrency(hardwoodCost)}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      {((hardwoodCost / totals.total) * 100).toFixed(1)}% of total cost
+                    </Typography>
+                    <Typography variant="caption" color="textSecondary">
+                      {((hardwoodCost / (softwoodCost + hardwoodCost)) * 100).toFixed(1)}% of fiber cost
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Box>
+              <Box sx={{ flex: '1 1 300px', minWidth: 280 }}>
+                <Card>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <FactoryIcon />
+                      <Typography variant="subtitle2">
+                        Total Fiber Cost
+                      </Typography>
+                    </Box>
+                    <Typography variant="h5">
+                      {formatIndianCurrency(softwoodCost + hardwoodCost)}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      {(((softwoodCost + hardwoodCost) / totals.total) * 100).toFixed(1)}% of total cost
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={`SW:HW = ${Math.round((softwoodCost / (softwoodCost + hardwoodCost)) * 100)}:${Math.round((hardwoodCost / (softwoodCost + hardwoodCost)) * 100)}`}
+                      sx={{ mt: 1 }}
+                    />
+                  </CardContent>
+                </Card>
+              </Box>
+            </Box>
+          </Paper>
+        </Box>
+      )}
 
       {/* Cost Category Table */}
       <Box sx={{ mt: 3 }}>

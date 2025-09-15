@@ -83,6 +83,26 @@ const CHEMICAL_RATES: { [key: string]: number } = {
   'default': 200
 };
 
+// Pulp rates per MT (from consumption sheet)
+const PULP_RATES: { [key: string]: number } = {
+  'Imported Softwood Pulp SODRA (AD)': 76144,
+  'Imported Hardwood Pulp Acacia (AD)April': 58589.95,
+  'Imported Hardwood Pulp Acacia (AD)Exman': 58590,
+  'Imported Hardwood Pulp CMPC (AD)Domestic': 67410,
+  'Imported Hardwood Pulp Baycel': 58500,
+  'Imported Softwood Pulp Mercer(AD)': 76000,
+  'Imported Softwood Pulp Laja (AD)': 78000,
+  'Imported Softwood Pulp Pacifico (AD)': 78000,
+  'Imported Softwood Pulp KOMI (AD)': 69000,
+  'Wet strength white Tissue': 36452,
+  'Imported Hardwood Pulp Suzano (AD)': 58500,
+  'Imported Softwood Pulp STORA (AD)': 76000,
+  'Imported Softwood Pulp METSA (AD)': 76140,
+  'Imported Hardwood April XP (AD)': 58589,
+  'default_softwood': 75000,
+  'default_hardwood': 60000
+};
+
 // Utility rates (based on industry standards in India)
 const UTILITY_RATES = {
   steam: 2800, // ₹/MT of steam
@@ -127,7 +147,10 @@ export async function parseCostingExcel(file: File): Promise<CostingData[]> {
         });
         
         // Parse consumption data
-        const { consumptionMap, perTonCostMap, timeLossMap } = parseConsumptionSheet(workbook);
+        const { consumptionMap, perTonCostMap, timeLossMap, directCostsMap } = parseConsumptionSheet(workbook);
+        
+        // Parse pulp consumption breakdown
+        const pulpData = parsePulpConsumption(workbook);
         
         // Parse chemical consumption
         const chemicalData = parseChemicalSheet(workbook);
@@ -136,7 +159,7 @@ export async function parseCostingExcel(file: File): Promise<CostingData[]> {
         const utilityData = parseUtilityData(workbook);
         
         // Combine all data to create costing records
-        const costingData = combineCostingData(productionData, consumptionMap, chemicalData, utilityData, productionLosses, perTonCostMap, timeLossMap);
+        const costingData = combineCostingData(productionData, consumptionMap, chemicalData, utilityData, productionLosses, perTonCostMap, timeLossMap, directCostsMap, pulpData);
         
         // Log date range of parsed data
         if (costingData.length > 0) {
@@ -464,16 +487,33 @@ interface ConsumptionSheetData {
   consumptionMap: Map<string, RawMaterialConsumption[]>;
   perTonCostMap: Map<string, { mcProduction?: number; finishProduction?: number }>;
   timeLossMap: Map<string, number>; // Time loss in MT (from APPROX BACK LOG column)
+  directCostsMap: Map<string, {
+    fiber?: number;
+    chemical?: number;
+    steam?: number;
+    gas?: number;
+    power?: number;
+    packing?: number;
+  }>;
 }
 
 function parseConsumptionSheet(workbook: XLSX.WorkBook): ConsumptionSheetData {
-  const sheet = workbook.Sheets['Consumption'];
-  if (!sheet) return { consumptionMap: new Map(), perTonCostMap: new Map(), timeLossMap: new Map() };
+  // Try different possible sheet names
+  const sheet = workbook.Sheets['Consumption'] || 
+                workbook.Sheets['Daily Consumption ( Variable cost)'] ||
+                workbook.Sheets['Daily Consumption'] ||
+                workbook.Sheets['Consumption '];
+  if (!sheet) {
+    console.log('Consumption sheet not found. Available sheets:', Object.keys(workbook.Sheets));
+    return { consumptionMap: new Map(), perTonCostMap: new Map(), timeLossMap: new Map(), directCostsMap: new Map() };
+  }
+  console.log('Found consumption sheet');
   
   const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
   const consumptionMap = new Map<string, RawMaterialConsumption[]>();
   const perTonCostMap = new Map<string, { mcProduction?: number; finishProduction?: number }>();
   const timeLossMap = new Map<string, number>();
+  const directCostsMap = new Map<string, { fiber?: number; chemical?: number; steam?: number; gas?: number; power?: number; packing?: number }>();
   
   // Find column indices for per ton cost columns and time loss column
   // Based on the Excel analysis, they are at columns 85 and 86 (0-indexed: 84 and 85)
@@ -481,6 +521,14 @@ function parseConsumptionSheet(workbook: XLSX.WorkBook): ConsumptionSheetData {
   let perTonMCCol = -1;
   let perTonFinishCol = -1;
   let timeLossCol = -1;
+  
+  // Find direct cost columns (Fiber, Chemical, Steam, etc.)
+  let fiberCostCol = -1;
+  let chemicalCostCol = -1;
+  let steamCostCol = -1;
+  let gasCostCol = -1;
+  let powerCostCol = -1;
+  let packingCostCol = -1;
   
   // Check row 3 (index 2) for column headers - this is where the headers are
   if (jsonData[2]) {
@@ -497,6 +545,31 @@ function parseConsumptionSheet(workbook: XLSX.WorkBook): ConsumptionSheetData {
       if (header.toLowerCase().includes('approx back log') || header.toLowerCase().includes('wip')) {
         timeLossCol = col;
         console.log(`Found Time Loss column at: ${col}, header: ${header}`);
+      }
+      // Find direct cost columns
+      if (header.toLowerCase() === 'fiber') {
+        fiberCostCol = col;
+        console.log(`Found Fiber cost column at: ${col}`);
+      }
+      if (header.toLowerCase() === 'chemical') {
+        chemicalCostCol = col;
+        console.log(`Found Chemical cost column at: ${col}`);
+      }
+      if (header.toLowerCase() === 'steam') {
+        steamCostCol = col;
+        console.log(`Found Steam cost column at: ${col}`);
+      }
+      if (header.toLowerCase() === 'gas') {
+        gasCostCol = col;
+        console.log(`Found Gas cost column at: ${col}`);
+      }
+      if (header.toLowerCase() === 'power') {
+        powerCostCol = col;
+        console.log(`Found Power cost column at: ${col}`);
+      }
+      if (header.toLowerCase() === 'packing') {
+        packingCostCol = col;
+        console.log(`Found Packing cost column at: ${col}`);
       }
     }
   }
@@ -523,6 +596,11 @@ function parseConsumptionSheet(workbook: XLSX.WorkBook): ConsumptionSheetData {
   const materials: string[] = [];
   const rates: number[] = [];
   
+  // Log the sheet structure
+  console.log('Consumption sheet structure:');
+  console.log('Row 1 (headers):', jsonData[1]?.slice(0, 20));
+  console.log('Row 3 (rates):', jsonData[3]?.slice(0, 20));
+  
   for (let col = 1; col < jsonData[1].length; col++) {
     const header = jsonData[1][col]?.toString() || '';
     // Skip per ton cost columns when collecting material names
@@ -531,6 +609,9 @@ function parseConsumptionSheet(workbook: XLSX.WorkBook): ConsumptionSheetData {
       rates.push(parseFloat(jsonData[3][col]) || 0);
     }
   }
+  
+  console.log(`Found ${materials.length} materials in consumption sheet`);
+  console.log('First 10 materials:', materials.slice(0, 10));
   
   // Parse consumption data starting from row 5
   for (let row = 4; row < jsonData.length; row++) {
@@ -586,16 +667,187 @@ function parseConsumptionSheet(workbook: XLSX.WorkBook): ConsumptionSheetData {
       }
     }
     
+    // Parse direct costs
+    const directCosts: any = {};
+    if (fiberCostCol >= 0 && jsonData[row][fiberCostCol]) {
+      const value = jsonData[row][fiberCostCol]?.toString() || '';
+      const numericValue = parseFloat(value.replace(/[₹,]/g, '')) || 0;
+      if (numericValue > 0) {
+        directCosts.fiber = numericValue;
+      }
+    }
+    if (chemicalCostCol >= 0 && jsonData[row][chemicalCostCol]) {
+      const value = jsonData[row][chemicalCostCol]?.toString() || '';
+      const numericValue = parseFloat(value.replace(/[₹,]/g, '')) || 0;
+      if (numericValue > 0) {
+        directCosts.chemical = numericValue;
+      }
+    }
+    if (steamCostCol >= 0 && jsonData[row][steamCostCol]) {
+      const value = jsonData[row][steamCostCol]?.toString() || '';
+      const numericValue = parseFloat(value.replace(/[₹,]/g, '')) || 0;
+      if (numericValue > 0) {
+        directCosts.steam = numericValue;
+      }
+    }
+    if (gasCostCol >= 0 && jsonData[row][gasCostCol]) {
+      const value = jsonData[row][gasCostCol]?.toString() || '';
+      const numericValue = parseFloat(value.replace(/[₹,]/g, '')) || 0;
+      if (numericValue > 0) {
+        directCosts.gas = numericValue;
+      }
+    }
+    if (powerCostCol >= 0 && jsonData[row][powerCostCol]) {
+      const value = jsonData[row][powerCostCol]?.toString() || '';
+      const numericValue = parseFloat(value.replace(/[₹,]/g, '')) || 0;
+      if (numericValue > 0) {
+        directCosts.power = numericValue;
+      }
+    }
+    if (packingCostCol >= 0 && jsonData[row][packingCostCol]) {
+      const value = jsonData[row][packingCostCol]?.toString() || '';
+      const numericValue = parseFloat(value.replace(/[₹,]/g, '')) || 0;
+      if (numericValue > 0) {
+        directCosts.packing = numericValue;
+      }
+    }
+    
+    if (Object.keys(directCosts).length > 0) {
+      directCostsMap.set(date, directCosts);
+      console.log(`Direct costs for ${date}:`, directCosts);
+    }
+    
     if (dayConsumption.length > 0) {
       consumptionMap.set(date, dayConsumption);
     }
   }
   
-  return { consumptionMap, perTonCostMap, timeLossMap };
+  return { consumptionMap, perTonCostMap, timeLossMap, directCostsMap };
+}
+
+interface PulpConsumption {
+  date: string;
+  pulpType: string;
+  category: 'softwood' | 'hardwood' | 'tissue';
+  quantity: number;
+}
+
+function parsePulpConsumption(workbook: XLSX.WorkBook): Map<string, PulpConsumption[]> {
+  const sheet = workbook.Sheets['Pulp & Chemical consumption'] || workbook.Sheets['Pulp & Chemical Consumption'];
+  if (!sheet) return new Map();
+  
+  const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+  const pulpMap = new Map<string, PulpConsumption[]>();
+  
+  // Pulp type categorization
+  const pulpCategories: { [key: string]: 'softwood' | 'hardwood' | 'tissue' } = {
+    'SODRA': 'softwood',
+    'STORA': 'softwood',
+    'METSA': 'softwood',
+    'KOMI': 'softwood',
+    'Mercer': 'softwood',
+    'Laja': 'softwood',
+    'Pacifico': 'softwood',
+    'Acacia': 'hardwood',
+    'CMPC': 'hardwood',
+    'Baycel': 'hardwood',
+    'Suzano': 'hardwood',
+    'April': 'hardwood',
+    'Tissue': 'tissue'
+  };
+  
+  // Find RAW MATERIAL section
+  let rawMaterialStartRow = -1;
+  for (let i = 0; i < Math.min(10, jsonData.length); i++) {
+    if (jsonData[i][0] === 'A' && jsonData[i][1] === 'RAW MATERIAL') {
+      rawMaterialStartRow = i + 1;
+      break;
+    }
+  }
+  
+  if (rawMaterialStartRow === -1) return pulpMap;
+  
+  // Get dates from row with dates (should be row 2, index 1)
+  const dates: string[] = [];
+  const dateRow = jsonData[1];
+  
+  // Find the starting column for dates (skip first few columns that have headers)
+  let dateStartCol = -1;
+  for (let col = 0; col < dateRow.length; col++) {
+    const cellValue = dateRow[col];
+    if (cellValue && formatDate(cellValue) && formatDate(cellValue).includes('2025')) {
+      dateStartCol = col;
+      break;
+    }
+  }
+  
+  if (dateStartCol === -1) return pulpMap;
+  
+  // Collect all dates
+  for (let col = dateStartCol; col < dateRow.length; col++) {
+    const dateValue = dateRow[col];
+    if (dateValue) {
+      const formattedDate = formatDate(dateValue);
+      if (formattedDate && formattedDate.includes('2025')) {
+        dates.push(formattedDate);
+      }
+    }
+  }
+  
+  console.log(`Found ${dates.length} dates in Pulp sheet starting from column ${dateStartCol}`);
+  
+  // Parse pulp consumption
+  for (let row = rawMaterialStartRow; row < jsonData.length; row++) {
+    const pulpName = jsonData[row][1]?.toString() || '';
+    
+    // Stop if we reach chemicals section or empty rows
+    if (!pulpName || pulpName === 'Solenise Chemicals' || pulpName.includes('Total Pulp')) {
+      break;
+    }
+    
+    // Determine pulp category
+    let category: 'softwood' | 'hardwood' | 'tissue' = 'hardwood'; // default
+    for (const [keyword, cat] of Object.entries(pulpCategories)) {
+      if (pulpName.includes(keyword)) {
+        category = cat;
+        break;
+      }
+    }
+    
+    // Parse consumption for each date
+    dates.forEach((date, index) => {
+      const col = dateStartCol + index;
+      const quantity = parseFloat(jsonData[row][col]) || 0;
+      
+      if (quantity > 0) {
+        if (!pulpMap.has(date)) {
+          pulpMap.set(date, []);
+        }
+        
+        pulpMap.get(date)!.push({
+          date,
+          pulpType: pulpName,
+          category,
+          quantity
+        });
+      }
+    });
+  }
+  
+  // Log summary
+  pulpMap.forEach((pulps, date) => {
+    const softwoodTotal = pulps.filter(p => p.category === 'softwood').reduce((sum, p) => sum + p.quantity, 0);
+    const hardwoodTotal = pulps.filter(p => p.category === 'hardwood').reduce((sum, p) => sum + p.quantity, 0);
+    if (date === '2025-08-01') {
+      console.log(`Pulp breakdown for ${date}: Softwood=${softwoodTotal.toFixed(2)} MT, Hardwood=${hardwoodTotal.toFixed(2)} MT`);
+    }
+  });
+  
+  return pulpMap;
 }
 
 function parseChemicalSheet(workbook: XLSX.WorkBook): Map<string, ChemicalConsumption[]> {
-  const sheet = workbook.Sheets['Pulp & Chemical consumption'];
+  const sheet = workbook.Sheets['Pulp & Chemical consumption'] || workbook.Sheets['Pulp & Chemical Consumption'];
   if (!sheet) return new Map();
   
   const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
@@ -710,7 +962,16 @@ function combineCostingData(
   utilityData: Map<string, UtilityConsumption>,
   productionLosses: Map<string, ProductionLoss[]>,
   perTonCostMap: Map<string, { mcProduction?: number; finishProduction?: number }>,
-  timeLossMap: Map<string, number>
+  timeLossMap: Map<string, number>,
+  directCostsMap: Map<string, {
+    fiber?: number;
+    chemical?: number;
+    steam?: number;
+    gas?: number;
+    power?: number;
+    packing?: number;
+  }>,
+  pulpData: Map<string, PulpConsumption[]>
 ): CostingData[] {
   const costingData: CostingData[] = [];
   
@@ -728,16 +989,21 @@ function combineCostingData(
     const totalProduction = dayProduction.reduce((sum, p) => sum + p.production, 0);
     if (totalProduction === 0) return;
     
-    // Calculate fiber cost
-    const dayConsumption = consumptionData.get(date) || [];
-    const fiberCost = dayConsumption.reduce((sum, c) => sum + c.amount, 0);
+    // Get direct costs if available
+    const directCosts = directCostsMap.get(date);
     
-    // Calculate chemical cost
+    // Calculate fiber cost - use direct cost if available
+    const dayConsumption = consumptionData.get(date) || [];
+    const calculatedFiberCost = dayConsumption.reduce((sum, c) => sum + c.amount, 0);
+    const fiberCost = directCosts?.fiber || calculatedFiberCost;
+    
+    // Calculate chemical cost - use direct cost if available
     const dayChemicals = chemicalData.get(date) || [];
-    const chemicalsCost = dayChemicals.reduce((sum, c) => {
+    const calculatedChemicalsCost = dayChemicals.reduce((sum, c) => {
       const rate = CHEMICAL_RATES[c.chemical] || CHEMICAL_RATES.default;
       return sum + (c.quantity * rate);
     }, 0);
+    const chemicalsCost = directCosts?.chemical || calculatedChemicalsCost;
     
     // Calculate utility costs based on actual consumption data or estimates
     const utilityConsumption = utilityData.get(date);
@@ -746,22 +1012,32 @@ function combineCostingData(
     let electricityCost: number;
     let waterCost: number;
     
-    if (utilityConsumption) {
+    if (directCosts?.steam) {
+      // Use direct cost if available
+      steamCost = directCosts.steam;
+      lpgCost = directCosts.gas || 0;
+    } else if (utilityConsumption) {
       // Use actual consumption data
       steamCost = utilityConsumption.steam * UTILITY_RATES.steam;
       lpgCost = utilityConsumption.lpg * 1000 * UTILITY_RATES.lpg; // Convert MT to kg
-      waterCost = utilityConsumption.water * UTILITY_RATES.water;
-      
-      // Calculate electricity based on production if not available
-      // Assuming 1100 kWh per MT production
-      electricityCost = utilityConsumption.power > 0 
-        ? utilityConsumption.power * UTILITY_RATES.electricity
-        : totalProduction * 1100 * UTILITY_RATES.electricity;
     } else {
       // Use estimates based on typical tissue manufacturing ratios
       steamCost = totalProduction * 3.2 * UTILITY_RATES.steam; // 3.2 MT steam per MT tissue
       lpgCost = totalProduction * 25 * UTILITY_RATES.lpg; // 25 kg LPG per MT
+    }
+    
+    if (directCosts?.power) {
+      // Use direct cost if available
+      electricityCost = directCosts.power;
+    } else if (utilityConsumption && utilityConsumption.power > 0) {
+      electricityCost = utilityConsumption.power * UTILITY_RATES.electricity;
+    } else {
       electricityCost = totalProduction * 1100 * UTILITY_RATES.electricity; // 1100 kWh per MT
+    }
+    
+    if (utilityConsumption) {
+      waterCost = utilityConsumption.water * UTILITY_RATES.water;
+    } else {
       waterCost = totalProduction * 60 * UTILITY_RATES.water; // 60 m³ per MT
     }
     const laborCost = totalProduction * UTILITY_RATES.labor;
@@ -862,7 +1138,38 @@ function combineCostingData(
       wasteCost,
       quality,
       gsmGrade,
-      rawMaterials: dayConsumption,
+      rawMaterials: (() => {
+        // Combine consumption data with pulp data for more accurate breakdown
+        const pulpConsumption = pulpData.get(date) || [];
+        const combinedMaterials: RawMaterialConsumption[] = [];
+        
+        // Add pulp consumption with rates
+        pulpConsumption.forEach(pulp => {
+          const rate = PULP_RATES[pulp.pulpType] || 
+                      (pulp.category === 'softwood' ? PULP_RATES.default_softwood : PULP_RATES.default_hardwood);
+          combinedMaterials.push({
+            date,
+            material: pulp.pulpType,
+            quantity: pulp.quantity,
+            rate,
+            amount: pulp.quantity * rate
+          });
+        });
+        
+        // Add other raw materials from consumption sheet if not duplicates
+        dayConsumption.forEach(material => {
+          // Check if this material is already in pulp data
+          const isPulp = pulpConsumption.some(pulp => 
+            material.material.includes(pulp.pulpType) || 
+            pulp.pulpType.includes(material.material)
+          );
+          if (!isPulp) {
+            combinedMaterials.push(material);
+          }
+        });
+        
+        return combinedMaterials;
+      })(),
       chemicals: dayChemicals,
       productionLosses: dayLosses,
       totalTimeLoss,
