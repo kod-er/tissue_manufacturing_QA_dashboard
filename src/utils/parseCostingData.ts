@@ -175,62 +175,70 @@ function parseProductionSheet(workbook: XLSX.WorkBook): { production: Production
   const productionData: ProductionData[] = [];
   const lossesMap = new Map<string, ProductionLoss[]>();
   
-  // Log header row to understand column structure
-  if (jsonData.length > 0) {
-    console.log('Header row:', jsonData[0]);
-    console.log('Row 2:', jsonData[1]);
-    console.log('Row 3:', jsonData[2]);
-  }
   
   // Start from row 4 (0-indexed row 3)
+  let currentDate = '';
+  console.log('Starting to parse production sheet, total rows:', jsonData.length);
+  
   for (let i = 3; i < jsonData.length; i++) {
     const row = jsonData[i];
     
-    // Log first few rows to debug
-    if (i < 10) {
-      console.log(`Row ${i + 1}:`, row);
+    // Debug logging for rows around Aug 15
+    if (i >= 50 && i <= 70) {
+      console.log(`Row ${i + 1}: Date=${row[0]}, Dept=${row[9]}, Time=${row[10]}, Remarks=${row[13]}, currentDate=${currentDate}`);
     }
     
+    // Update current date if a new date is found
     if (row[0]) {
       // Skip special codes like MR-20-J, CT-16-J
       if (typeof row[0] === 'string' && row[0].match(/^[A-Z]{2}-\d{2}-[A-Z]$/)) {
         continue;
       }
       
-      const date = formatDate(row[0]);
-      
-      // Log dates after Aug 31, 2025
-      if (date > '2025-08-31') {
-        console.log(`Production sheet - Found date after Aug 31: ${date}, row[0]: ${row[0]}`);
+      const newDate = formatDate(row[0]);
+      if (newDate) {
+        currentDate = newDate;
+        
+        // Log all dates
+        if (currentDate >= '2025-08-14' && currentDate <= '2025-08-20') {
+          console.log(`Production sheet - Processing date: ${currentDate}, row ${i + 1}`);
+        }
       }
       
       // Parse production data
       if (row[2] && row[3] && row[6]) {
         productionData.push({
-          date,
+          date: currentDate,
           quality: row[2],
           gsm: parseFloat(row[3]) || 0,
           production: parseFloat(row[6]) || 0,
           speed: parseFloat(row[5]) || 0
         });
       }
-      
+    }
+    
+    // For rows with only date and no other data, still update current date
+    if (!row[0] && !currentDate) {
+      continue; // Skip if we don't have a date yet
+    }
+    
+    // Use current date for all rows (including those without dates)
+    if (currentDate) {
       // Parse production losses
       // In the Production sheet, the columns are:
-      // Column 8: Production Loss Details / Dept.
-      // Column 9: Time loss (H:MM format)
-      // Column 10: Hrs. (if time is split)
-      // Column 11: Min. (if time is split) / Remarks
-      // Column 12: Remarks (if columns 10/11 have time)
-      if (row[8] && row[8].toString().trim() !== '' && 
-          row[8].toString().trim() !== 'Day total' &&
-          row[8].toString().trim() !== 'Dept.' &&
-          !row[8].toString().includes('M/c Production') &&
-          !row[8].toString().includes('Production Loss Details') &&
-          !row[8].toString().includes('Day Total Hrs') &&
-          !row[8].toString().match(/^\d+\.?\d*$/)) { // Skip pure numbers
+      // Column 8: Production Loss Details
+      // Column 9: Dept.
+      // Column 10: Time loss (H:MM format)
+      // Column 11: Hrs. (if provided separately - usually empty)
+      // Column 12: Min. (if provided separately - usually empty)
+      // Column 13: Remarks
+      // Check column 9 for department (not column 8)
+      if (row[9] && row[9].toString().trim() !== '' && 
+          row[9].toString().trim() !== 'Dept.' &&
+          row[9].toString().trim() !== 'Time loss,' &&
+          !row[9].toString().match(/^\d+\.?\d*$/)) { // Skip pure numbers
         
-        const departmentRaw = row[8].toString().trim();
+        const departmentRaw = row[9].toString().trim();
         
         // Skip if it's a number or time value
         if (departmentRaw.match(/^\d+:?\d*$/) || departmentRaw.match(/^\d+\.\d+$/)) {
@@ -247,7 +255,12 @@ function parseProductionSheet(workbook: XLSX.WorkBook): { production: Production
           'Maintainance': 'Maintenance',
           'System wash up': 'System Wash',
           'Sheet break': 'Sheet Break',
-          'Grade change': 'Grade Change'
+          'Grade change': 'Grade Change',
+          'Others': 'Others',
+          'Process': 'Process',
+          'Power': 'Power',
+          'Steam': 'Steam',
+          'Instruments': 'Instruments'
         };
         
         // Apply mapping if exists
@@ -257,9 +270,9 @@ function parseProductionSheet(workbook: XLSX.WorkBook): { production: Production
         let timeLoss = 0;
         let remarks = '';
         
-        // First check column 9 for time in H:MM format
-        if (row[9] !== undefined && row[9] !== null && row[9] !== '') {
-          const timeLossRaw = row[9];
+        // Check column 10 for time in H:MM format (not column 9)
+        if (row[10] !== undefined && row[10] !== null && row[10] !== '') {
+          const timeLossRaw = row[10];
           
           if (typeof timeLossRaw === 'number') {
             // Excel might store time as fraction of a day
@@ -273,60 +286,41 @@ function parseProductionSheet(workbook: XLSX.WorkBook): { production: Production
             
             if (timeLossStr.includes(':')) {
               // Handle H:MM format (hours:minutes)
-              const parts = timeLossStr.split(':');
+              // Clean up any leading dots or special characters
+              const cleanedStr = timeLossStr.replace(/^[.\s]+/, '');
+              const parts = cleanedStr.split(':');
               if (parts.length >= 2) {
                 const hours = parseInt(parts[0]) || 0;
                 const minutes = parseInt(parts[1]) || 0;
                 timeLoss = hours + minutes / 60;
               }
-            } else {
+            } else if (timeLossStr !== '') {
               // Try to parse as a regular number (hours)
               timeLoss = parseFloat(timeLossStr) || 0;
             }
           }
-          
-          // Remarks might be in column 10 or 11 depending on format
-          if (row[10]) {
-            // Check if column 10 is a number (hours) or text (remarks)
-            const col10Str = row[10].toString().trim();
-            if (col10Str && !col10Str.match(/^\d+\.?\d*$/)) {
-              remarks = col10Str;
-            }
-          }
-          if (!remarks && row[11]) {
-            remarks = row[11].toString();
-          }
-          if (!remarks && row[12]) {
-            remarks = row[12].toString();
-          }
         }
         
-        // If time loss is 0, check if it's in separate Hrs/Min columns (10 and 11)
-        if (timeLoss === 0 && row[10] !== undefined && row[10] !== null) {
-          const col10Str = row[10].toString().trim();
-          if (col10Str.match(/^\d+\.?\d*$/)) {
-            const hrs = parseFloat(col10Str) || 0;
-            const mins = row[11] ? (parseFloat(row[11].toString()) || 0) : 0;
-            if (hrs > 0 || mins > 0) {
-              timeLoss = hrs + mins / 60;
-              // Remarks would be in column 12
-              if (row[12]) {
-                remarks = row[12].toString();
-              }
-            }
-          }
+        // Remarks are in column 13 (0-indexed column 13 is the 14th column)
+        // But in some rows, remarks might be in column 12 if column structure shifts
+        if (row[13]) {
+          remarks = row[13].toString();
+        } else if (row[12] && typeof row[12] === 'string' && !row[12].toString().match(/^\d+$/)) {
+          remarks = row[12].toString();
         }
         
         // Debug logging
         if (timeLoss > 0) {
-          console.log(`Production sheet - Date: ${date}, Dept: ${department}, TimeLoss: ${timeLoss.toFixed(2)} hours, Remarks: ${remarks}`);
-          
-          if (!lossesMap.has(date)) {
-            lossesMap.set(date, []);
+          if (currentDate >= '2025-08-15') {
+            console.log(`Production sheet - Date: ${currentDate}, Dept: ${department}, TimeLoss: ${timeLoss.toFixed(2)} hours, Remarks: ${remarks}`);
           }
           
-          lossesMap.get(date)!.push({
-            date,
+          if (!lossesMap.has(currentDate)) {
+            lossesMap.set(currentDate, []);
+          }
+          
+          lossesMap.get(currentDate)!.push({
+            date: currentDate,
             department,
             timeLoss,
             remarks
@@ -335,6 +329,22 @@ function parseProductionSheet(workbook: XLSX.WorkBook): { production: Production
       }
     }
   }
+  
+  // Debug summary
+  console.log('Production sheet parsing complete:');
+  console.log('Total production entries:', productionData.length);
+  console.log('Dates with losses:', Array.from(lossesMap.keys()).sort());
+  
+  // Check specifically for dates after Aug 15
+  const lossesAfterAug15 = Array.from(lossesMap.entries())
+    .filter(([date, losses]) => date >= '2025-08-15')
+    .map(([date, losses]) => ({
+      date,
+      count: losses.length,
+      totalHours: losses.reduce((sum, l) => sum + l.timeLoss, 0)
+    }));
+  
+  console.log('Losses after Aug 15:', lossesAfterAug15);
   
   return { production: productionData, losses: lossesMap };
 }
