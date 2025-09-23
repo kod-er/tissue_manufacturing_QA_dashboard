@@ -114,6 +114,32 @@ const UTILITY_RATES = {
   overhead: 350, // ₹/MT (admin, insurance, etc.)
 };
 
+// Normalize department name - handle case variations and common abbreviations
+function normalizeDepartment(dept: string): string {
+  const deptLower = dept.toLowerCase().trim();
+  
+  // Common department mappings (case-insensitive)
+  const deptMappings: { [key: string]: string } = {
+    'instt': 'Instruments',
+    'instruments': 'Instruments',
+    'maintt': 'Maintenance',
+    'maintainance': 'Maintenance',
+    'maintenance': 'Maintenance',
+    'system wash up': 'System Wash',
+    'system wash': 'System Wash',
+    'sheet break': 'Sheet Break',
+    'grade change': 'Grade Change',
+    'others': 'Others',
+    'process': 'Process',
+    'power': 'Power',
+    'steam': 'Steam',
+    'electrical': 'Electrical'
+  };
+  
+  // Return normalized name if found in mappings
+  return deptMappings[deptLower] || dept;
+}
+
 export async function parseCostingExcel(file: File): Promise<CostingData[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -273,27 +299,7 @@ function parseProductionSheet(workbook: XLSX.WorkBook): { production: Production
         }
         
         // Clean up department name
-        let department = departmentRaw;
-        
-        // Common department mappings
-        const deptMappings: { [key: string]: string } = {
-          'Instt': 'Instruments',
-          'Maintt': 'Maintenance',
-          'Maintainance': 'Maintenance',
-          'System wash up': 'System Wash',
-          'Sheet break': 'Sheet Break',
-          'Grade change': 'Grade Change',
-          'Others': 'Others',
-          'Process': 'Process',
-          'Power': 'Power',
-          'Steam': 'Steam',
-          'Instruments': 'Instruments'
-        };
-        
-        // Apply mapping if exists
-        if (deptMappings[department]) {
-          department = deptMappings[department];
-        }
+        let department = normalizeDepartment(departmentRaw);
         let timeLoss = 0;
         let remarks = '';
         
@@ -419,7 +425,7 @@ function parseDailySheets(workbook: XLSX.WorkBook): Map<string, ProductionLoss[]
             !row[8].toString().toLowerCase().includes('total hrs') &&
             !row[8].toString().includes('Tissue Paper')) {
           
-          const department = row[8].toString().trim();
+          let department = normalizeDepartment(row[8].toString().trim());
           let timeLoss = 0;
           let remarks = '';
           
