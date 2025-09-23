@@ -1960,6 +1960,10 @@ const Costing: React.FC<CostingProps> = ({ data }) => {
                   if (!dept || dept.match(/^\d+\.?\d*$/) || dept.match(/^\d+:?\d*$/)) {
                     return false;
                   }
+                  // Filter out "Day Total" entries
+                  if (dept.toLowerCase().includes('day total') || dept.toLowerCase().includes('total hrs')) {
+                    return false;
+                  }
                   // Filter out entries that look like production values
                   if (dept.match(/^\d{2,}$/) || parseFloat(dept) > 50) {
                     return false;

@@ -259,6 +259,10 @@ function parseProductionSheet(workbook: XLSX.WorkBook): { production: Production
       if (row[9] && row[9].toString().trim() !== '' && 
           row[9].toString().trim() !== 'Dept.' &&
           row[9].toString().trim() !== 'Time loss,' &&
+          row[9].toString().trim() !== 'Day Total Hrs.' &&
+          row[9].toString().trim() !== 'Day total' &&
+          row[9].toString().trim() !== 'Day Total' &&
+          !row[9].toString().toLowerCase().includes('day total') &&
           !row[9].toString().match(/^\d+\.?\d*$/)) { // Skip pure numbers
         
         const departmentRaw = row[9].toString().trim();
@@ -410,6 +414,9 @@ function parseDailySheets(workbook: XLSX.WorkBook): Map<string, ProductionLoss[]
         if (row[8] && row[8].toString().trim() !== '' && 
             row[8].toString().trim() !== 'Day total' &&
             row[8].toString().trim() !== 'Day Total Hrs.' &&
+            row[8].toString().trim() !== 'Day Total' &&
+            !row[8].toString().toLowerCase().includes('day total') &&
+            !row[8].toString().toLowerCase().includes('total hrs') &&
             !row[8].toString().includes('Tissue Paper')) {
           
           const department = row[8].toString().trim();
