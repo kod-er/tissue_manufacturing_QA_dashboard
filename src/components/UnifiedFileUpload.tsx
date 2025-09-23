@@ -42,6 +42,7 @@ interface UnifiedFileUploadProps {
   onCostingDataParsed: (data: CostingData[]) => void;
   qualityData?: QualityData[];
   costingData?: CostingData[];
+  onNavigate?: (tabIndex: number) => void;
 }
 
 interface FileStatus {
@@ -71,7 +72,8 @@ const UnifiedFileUpload: React.FC<UnifiedFileUploadProps> = ({
   onQualityDataParsed,
   onCostingDataParsed,
   qualityData,
-  costingData
+  costingData,
+  onNavigate
 }) => {
   const [fileStatus, setFileStatus] = useState<FileStatus>({
     controlChart: {
@@ -498,23 +500,54 @@ const UnifiedFileUpload: React.FC<UnifiedFileUploadProps> = ({
         </Paper>
       )}
 
-      {/* Summary */}
-      <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        {fileStatus.controlChart.uploaded && (
-          <Chip 
-            icon={<Assessment />} 
-            label={`Quality Data: ${fileStatus.controlChart.recordCount} records`}
-            color="primary"
-            variant="outlined"
-          />
-        )}
-        {fileStatus.costingReport.uploaded && (
-          <Chip 
-            icon={<CurrencyRupee />} 
-            label={`Costing Data: ${fileStatus.costingReport.recordCount} days`}
-            color="primary"
-            variant="outlined"
-          />
+      {/* Summary and Continue Button */}
+      <Box sx={{ mt: 3 }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+          {fileStatus.controlChart.uploaded && (
+            <Chip 
+              icon={<Assessment />} 
+              label={`Quality Data: ${fileStatus.controlChart.recordCount} records`}
+              color="primary"
+              variant="outlined"
+            />
+          )}
+          {fileStatus.costingReport.uploaded && (
+            <Chip 
+              icon={<CurrencyRupee />} 
+              label={`Costing Data: ${fileStatus.costingReport.recordCount} days`}
+              color="primary"
+              variant="outlined"
+            />
+          )}
+        </Box>
+        
+        {/* Continue Button */}
+        {(fileStatus.controlChart.uploaded || fileStatus.costingReport.uploaded) && (
+          <Box sx={{ mt: 3, textAlign: 'center' }}>
+            <Button
+              variant="contained"
+              size="large"
+              onClick={() => {
+                if (onNavigate) {
+                  // Navigate to the appropriate tab
+                  if (fileStatus.controlChart.uploaded && fileStatus.costingReport.uploaded) {
+                    onNavigate(1); // Go to Daily Report if both are uploaded
+                  } else if (fileStatus.controlChart.uploaded) {
+                    onNavigate(1); // Go to Daily Report for quality data
+                  } else if (fileStatus.costingReport.uploaded) {
+                    onNavigate(5); // Go to Costing tab for costing data
+                  }
+                }
+              }}
+              sx={{ minWidth: 200 }}
+            >
+              Continue to Analysis
+            </Button>
+            <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+              {!fileStatus.controlChart.uploaded && 'You can still upload Control Chart data later'}
+              {!fileStatus.costingReport.uploaded && 'You can still upload Production Report data later'}
+            </Typography>
+          </Box>
         )}
       </Box>
     </Box>

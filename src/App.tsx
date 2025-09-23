@@ -133,6 +133,10 @@ function App() {
         message: `Successfully loaded ${parsedData.length} days of costing data`,
         severity: 'success'
       });
+      // If no quality data is loaded, switch to Costing tab
+      if (data.length === 0) {
+        setTabValue(5); // Switch to Costing tab
+      }
     }
   };
 
@@ -248,7 +252,7 @@ function App() {
             </IconButton>
           </Toolbar>
           
-          {!isMobile && data.length > 0 && (
+          {!isMobile && (data.length > 0 || costingData.length > 0) && (
             <Tabs
               value={tabValue}
               onChange={handleTabChange}
@@ -319,14 +323,14 @@ function App() {
         <Container 
           maxWidth="xl" 
           sx={{ 
-            mt: isMobile ? 8 : (data.length > 0 ? 14 : 10), 
+            mt: isMobile ? 8 : ((data.length > 0 || costingData.length > 0) ? 14 : 10), 
             mb: 4,
             px: { xs: 2, sm: 3, md: 4 }
           }}
         >
           {loading && <LinearProgress sx={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999 }} />}
           
-          {data.length === 0 && !loading && (
+          {data.length === 0 && costingData.length === 0 && !loading && (
             <Zoom in={true} timeout={500}>
               <Box sx={{ textAlign: 'center', py: 8 }}>
                 <img 
@@ -350,12 +354,13 @@ function App() {
                   onCostingDataParsed={handleCostingDataParsed}
                   qualityData={data}
                   costingData={costingData}
+                  onNavigate={(index) => setTabValue(index)}
                 />
               </Box>
             </Zoom>
           )}
 
-          {data.length > 0 && (
+          {(data.length > 0 || costingData.length > 0) && (
             <>
               <TabPanel value={tabValue} index={0}>
                 <UnifiedFileUpload 
@@ -363,6 +368,7 @@ function App() {
                   onCostingDataParsed={handleCostingDataParsed}
                   qualityData={data}
                   costingData={costingData}
+                  onNavigate={(index) => setTabValue(index)}
                 />
               </TabPanel>
               
@@ -390,7 +396,7 @@ function App() {
         </Container>
 
         {/* Speed Dial for actions */}
-        {data.length > 0 && !isMobile && (
+        {(data.length > 0 || costingData.length > 0) && !isMobile && (
           <SpeedDial
             ariaLabel="Actions"
             sx={{ position: 'fixed', bottom: 16, right: 16 }}
