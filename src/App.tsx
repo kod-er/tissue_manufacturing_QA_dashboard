@@ -108,6 +108,27 @@ function App() {
     localStorage.setItem('darkMode', JSON.stringify(darkMode));
   }, [darkMode]);
 
+  // Auto-load pre-processed data on startup
+  useEffect(() => {
+    const loadPreprocessedData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`${process.env.PUBLIC_URL}/data/quality-data.json`);
+        const records: QualityData[] = await response.json();
+        if (records.length > 0) {
+          setData(records);
+          setFileName('GSTPL_Control_Chart_Pre_Upload.xlsx');
+          setTabValue(1);
+        }
+      } catch (e) {
+        // Silently fail — user can still upload manually
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadPreprocessedData();
+  }, []);
+
   const handleQualityDataParsed = (parsedData: QualityData[], file: string) => {
     setLoading(true);
     setTimeout(() => {

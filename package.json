@@ -34,8 +34,9 @@
     "xlsx": "^0.18.5"
   },
   "scripts": {
+    "preprocess": "node scripts/preprocess-data.js",
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "node scripts/preprocess-data.js && react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

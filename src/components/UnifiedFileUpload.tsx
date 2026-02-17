@@ -372,7 +372,7 @@ const UnifiedFileUpload: React.FC<UnifiedFileUploadProps> = ({
                   {fileStatus.controlChart.error}
                 </Alert>
               )}
-              
+
               <Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: 'block' }}>
                 For quality metrics: GSM, Tensile Strength, etc.
               </Typography>
