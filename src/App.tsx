@@ -117,7 +117,7 @@ function App() {
         const records: QualityData[] = await response.json();
         if (records.length > 0) {
           setData(records);
-          setFileName('GSTPL_Control_Chart_Pre_Upload.xlsx');
+          setFileName('GSTPL_Control_chart.xlsx');
           setTabValue(1);
         }
       } catch (e) {

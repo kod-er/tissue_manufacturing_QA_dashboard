@@ -7,7 +7,7 @@ const XLSX = require('xlsx');
 const path = require('path');
 const fs = require('fs');
 
-const INPUT = path.resolve(__dirname, '..', 'GSTPL_Control Chart_Pre_Upload.xlsx');
+const INPUT = path.resolve(__dirname, '..', 'GSTPL_Control chart.xlsx');
 const OUTPUT = path.resolve(__dirname, '..', 'public', 'data', 'quality-data.json');
 
 // Exact copy of columnMappings from src/utils/columnMappings.ts
